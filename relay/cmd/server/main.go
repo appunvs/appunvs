@@ -16,11 +16,15 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
+	"github.com/appunvs/appunvs/relay/internal/artifact"
 	"github.com/appunvs/appunvs/relay/internal/auth"
 	"github.com/appunvs/appunvs/relay/internal/billing"
+	"github.com/appunvs/appunvs/relay/internal/box"
 	"github.com/appunvs/appunvs/relay/internal/config"
 	"github.com/appunvs/appunvs/relay/internal/handler"
 	"github.com/appunvs/appunvs/relay/internal/hub"
+	"github.com/appunvs/appunvs/relay/internal/pairing"
+	"github.com/appunvs/appunvs/relay/internal/sandbox"
 	"github.com/appunvs/appunvs/relay/internal/sequencer"
 	"github.com/appunvs/appunvs/relay/internal/store"
 	"github.com/appunvs/appunvs/relay/internal/stream"
@@ -135,6 +139,35 @@ func main() {
 		Quota:  billing.NewGate(st, logger),
 		Log:    logger,
 	}))
+
+	// Stage pipeline: artifact storage + sandbox builder + box service.  The
+	// LocalFS / LocalStub combo gives a working end-to-end loop without any
+	// cloud dependency; production swaps in a real object store and a real
+	// Metro builder via the same interfaces.
+	artStore, err := artifact.NewLocalFS(cfg.Artifact.Root, cfg.Artifact.BaseURL)
+	if err != nil {
+		logger.Fatal("artifact store", zap.Error(err))
+	}
+	// Serve the LocalFS bundles under /_artifacts so the runner can fetch
+	// them in dev.  Production binds this URL to a CDN edge instead.
+	r.Static("/_artifacts", cfg.Artifact.Root)
+	boxSvc := box.New(st.Boxes(), sandbox.NewLocalStub(), artStore)
+	handler.RegisterBoxRoutes(r, handler.BoxDeps{
+		Signer:  signer,
+		Service: boxSvc,
+		Log:     logger,
+	})
+
+	pairSvc := pairing.New(rdb)
+	handler.RegisterPairingRoutes(r, handler.PairingDeps{
+		Signer:  signer,
+		Service: pairSvc,
+		Boxes:   boxSvc,
+		Log:     logger,
+	})
+	logger.Info("stage pipeline wired",
+		zap.String("artifact_backend", cfg.Artifact.Backend),
+		zap.String("artifact_root", cfg.Artifact.Root))
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,

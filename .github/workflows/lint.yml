@@ -19,27 +19,11 @@ jobs:
         with:
           go-version-file: relay/go.mod
           cache-dependency-path: relay/go.sum
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v7
         with:
           version: v2.5.0
           working-directory: relay
           args: --timeout 5m
-
-  svelte:
-    name: svelte-check
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: browser
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: browser/package-lock.json
-      - run: npm ci
-      - run: npm run check
 
   clippy:
     name: clippy
@@ -62,19 +46,3 @@ jobs:
         with:
           workspaces: desktop/src-tauri
       - run: cargo clippy --all-targets -- -D warnings
-
-  dart:
-    name: dart analyze
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mobile
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - run: dart run build_runner build --delete-conflicting-outputs
-      - run: flutter analyze

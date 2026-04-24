@@ -56,6 +56,30 @@ enum SubscriptionStatus {
   SUBSCRIPTION_STATUS_TRIALING    = 4;
 }
 
+// PublishState is the lifecycle of a Box's bundle.
+enum PublishState {
+  PUBLISH_STATE_UNSPECIFIED = 0;
+  PUBLISH_STATE_DRAFT       = 1;  // AI is editing; bundle may rebuild continuously
+  PUBLISH_STATE_PUBLISHED   = 2;  // current_version is stable, pairable to Stage
+  PUBLISH_STATE_ARCHIVED    = 3;  // provider retired the box; no new pairings
+}
+
+// BuildState is the sandbox pipeline status of a single BundleRef.
+enum BuildState {
+  BUILD_STATE_UNSPECIFIED = 0;
+  BUILD_STATE_QUEUED      = 1;
+  BUILD_STATE_RUNNING     = 2;
+  BUILD_STATE_SUCCEEDED   = 3;
+  BUILD_STATE_FAILED      = 4;
+}
+
+// RuntimeKind is the artifact shape the Stage runtime must load.
+// For v1 we only support RN_BUNDLE (Metro JS bundle + asset manifest).
+enum RuntimeKind {
+  RUNTIME_KIND_UNSPECIFIED = 0;
+  RUNTIME_KIND_RN_BUNDLE   = 1;
+}
+
 // Message is the single envelope exchanged between every client and the relay.
 // On the wire it is encoded as canonical protojson; see docs/protocol.md.
 //
@@ -245,6 +269,142 @@ message WsHandshakeParams {
   string token    = 1;  // required
   int64  last_seq = 2;  // optional; triggers Redis Stream replay
 }
+
+// ---------------------- Stage: Box + Bundle + Pairing ----------------------
+//
+// A Box is a provider-owned project whose AI-generated output is a RN JS
+// bundle.  The provider device edits via Chat, publishes a frozen BundleRef,
+// and shares it with connectors via a short-lived PairGrant.  The Stage tab
+// on a connector device loads the bundle URI into an isolated Hermes runtime.
+// The relay is the single source of truth for box state and pairing codes;
+// bundle bytes themselves live in object storage (see docs/architecture.md).
+
+// Box is a single AI-authored RN app owned by a provider device within a
+// namespace. `current_version` points at the most recent BundleRef whose
+// build_state is SUCCEEDED.
+message Box {
+  string       box_id             = 1;
+  string       namespace          = 2;
+  string       provider_device_id = 3;
+  string       title              = 4;
+  RuntimeKind  runtime            = 5;
+  PublishState state              = 6;
+  string       current_version    = 7;   // empty until first successful build
+  int64        created_at         = 8;
+  int64        updated_at         = 9;
+}
+
+// BundleRef names a single immutable build output for a Box.  `uri` is a
+// relay-signed short-lived URL; clients MUST NOT cache it past `expires_at`.
+// `content_hash` is the sha256 over the bundle payload, used for integrity
+// check on the runner side.
+message BundleRef {
+  string     box_id       = 1;
+  string     version      = 2;   // monotonic per box, assigned by relay
+  string     uri          = 3;   // pre-signed download URL
+  string     content_hash = 4;   // "sha256:<hex>"
+  int64      size_bytes   = 5;
+  BuildState build_state  = 6;
+  string     build_log    = 7;   // truncated stderr tail on FAILED; empty otherwise
+  int64      built_at     = 8;
+  int64      expires_at   = 9;
+}
+
+// POST /box
+message BoxCreateRequest {
+  string      title   = 1;
+  RuntimeKind runtime = 2;
+}
+
+// GET /box/:id   | POST /box  | POST /box/:id/publish
+message BoxResponse {
+  Box       box     = 1;
+  BundleRef current = 2;   // populated when box has any successful build
+}
+
+// GET /box
+message BoxListResponse {
+  repeated Box boxes = 1;
+}
+
+// POST /box/:id/publish  (no body — freezes the latest successful draft)
+message BoxPublishRequest {}
+
+// POST /pair  -- provider asks relay to mint a short code bound to a box.
+// `ttl_sec` must be <= 900 (15 minutes).  Connectors can exchange the code
+// once before it is deleted.
+message PairRequest {
+  string box_id  = 1;
+  int32  ttl_sec = 2;
+}
+
+message PairResponse {
+  string short_code = 1;   // 6–8 alphanumeric chars, user-friendly casing
+  int64  expires_at = 2;
+}
+
+// POST /pair/:code/claim  -- connector redeems the code, receives a bundle
+// URI plus a scoped namespace token it uses to subscribe to box updates.
+message PairClaimRequest {
+  string device_id = 1;
+  Platform platform = 2;
+}
+
+message PairClaimResponse {
+  string    box_id          = 1;
+  BundleRef bundle          = 2;
+  string    namespace_token = 3;  // JWT, scope=stage, audience=box_id
+}
+
+// ---------------------- Stage runtime events (WebSocket) ----------------------
+// These ride the existing /ws transport alongside Message.  The relay routes
+// them by inspecting a `kind` discriminator on every inbound envelope.  See
+// docs/protocol.md.
+
+// BoxVersionUpdate is broadcast to every connector currently paired to a box
+// whenever the provider publishes a new bundle.  The runner should re-fetch
+// `bundle.uri` and reload the Stage if content_hash changed.
+message BoxVersionUpdate {
+  string    box_id = 1;
+  BundleRef bundle = 2;
+}
+
+// ---------------------- AI session ----------------------
+// AI lives server-side; the client streams turns through the relay.  Each
+// Chat turn is a ChatTurnRequest that returns a stream of ChatTurnEvent
+// frames (tokens, tool calls, tool results, final).  The relay proxies to
+// the configured model provider and enforces namespace / budget.
+
+message ChatTurnRequest {
+  string box_id = 1;   // optional; when set the agent has fs tools scoped to this box
+  string text   = 2;
+  repeated Attachment attachments = 3;
+}
+
+message Attachment {
+  string mime = 1;
+  bytes  data = 2;   // base64 on the wire
+  string name = 3;
+}
+
+// ChatTurnEvent is a single frame on the response stream.  Only one of the
+// oneof branches is set per frame.
+message ChatTurnEvent {
+  string turn_id = 1;
+  oneof kind {
+    TokenDelta    token     = 2;
+    ToolCall      tool_call = 3;
+    ToolResult    tool_res  = 4;
+    TurnFinished  finished  = 5;
+    TurnError     error     = 6;
+  }
+}
+
+message TokenDelta   { string text = 1; }
+message ToolCall     { string call_id = 1; string name = 2; string args_json = 3; }
+message ToolResult   { string call_id = 1; string result_json = 2; bool   is_error = 3; }
+message TurnFinished { string stop_reason = 1; int64 tokens_in = 2; int64 tokens_out = 3; }
+message TurnError    { string error = 1; }
 
 // ---------------------- Error envelope ----------------------
 // Every 4xx/5xx response body conforms to ErrorResponse.  Clients can parse
