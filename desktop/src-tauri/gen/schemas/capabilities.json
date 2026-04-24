@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Minimal capability set. Front-end only needs core invoke + event listen.","local":true,"windows":["main"],"permissions":["core:default","core:event:default","core:window:default"]}}

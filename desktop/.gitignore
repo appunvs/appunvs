@@ -1,0 +1,12 @@
+node_modules
+/.svelte-kit
+/build
+/.vite
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Rust / Tauri build output
+/src-tauri/target
+/src-tauri/Cargo.lock

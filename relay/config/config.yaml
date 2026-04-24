@@ -1,0 +1,47 @@
+# appunvs relay — example configuration.
+# Every value can be overridden via APPUNVS_* environment variables
+# (e.g. APPUNVS_REDIS_ADDR=redis:6379). Dots in keys become underscores.
+
+listen: ":8080"
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+
+auth:
+  # Leave empty to generate an ephemeral in-memory RS256 keypair at startup.
+  # For production, mount real keys and point to them here.
+  private_key_path: ""
+  public_key_path: ""
+  issuer: "appunvs-relay"
+  audience: "appunvs-clients"
+  # Session tokens power the dashboard API; device tokens power /ws.
+  session_hours: 24
+  device_days: 30
+
+stream:
+  # Approximate cap passed to XADD MAXLEN ~.  With 24h effective retention
+  # this bounds memory even under sustained write load.
+  max_len: 100000
+
+log:
+  level: "info"
+
+db:
+  # SQLite file holding accounts, devices, api keys, plans, subscriptions,
+  # and app schema. Create the parent dir before startup.
+  path: "data/relay.db"
+
+billing:
+  # Stripe credentials. Leave both empty to run the relay in *mock mode*:
+  #   - POST /billing/checkout returns a synthetic https://stripe.mock/... URL
+  #   - POST /billing/webhook accepts an X-Mock-Upgrade: <plan_id> header
+  #     (no signature required) to bump a user's subscription.
+  # Real mode kicks in the moment stripe_secret_key is populated.
+  # Override from the environment via APPUNVS_BILLING_STRIPE_SECRET_KEY /
+  # APPUNVS_BILLING_STRIPE_WEBHOOK_SECRET.
+  stripe_secret_key: ""
+  stripe_webhook_secret: ""
+  checkout_success_url: "https://appunvs.local/billing/success"
+  checkout_cancel_url: "https://appunvs.local/billing/cancel"

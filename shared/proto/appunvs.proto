@@ -1,0 +1,254 @@
+syntax = "proto3";
+
+package appunvs.v1;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/appunvs/appunvs/relay/internal/pb;pb";
+
+// Platform identifies the host environment of a device.
+enum Platform {
+  PLATFORM_UNSPECIFIED = 0;
+  PLATFORM_BROWSER     = 1;
+  PLATFORM_DESKTOP     = 2;
+  PLATFORM_MOBILE      = 3;
+}
+
+// Role is the runtime relationship a device has with the relay.
+// BOTH means the device simultaneously acts as provider and connector.
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_PROVIDER    = 1;
+  ROLE_CONNECTOR   = 2;
+  ROLE_BOTH        = 3;
+}
+
+// Op is the kind of mutation carried by a Message payload.
+enum Op {
+  OP_UNSPECIFIED    = 0;
+  OP_UPSERT         = 1;
+  OP_DELETE         = 2;
+  // Schema mutations — sent as server broadcasts on table "_schema".
+  OP_TABLE_CREATE   = 3;
+  OP_TABLE_DELETE   = 4;
+  OP_COLUMN_ADD     = 5;
+  OP_COLUMN_DELETE  = 6;
+  // Billing guardrail — relay echoes this back to the sender when the
+  // current provider message would put the namespace over its per-day quota.
+  OP_QUOTA_EXCEEDED = 7;
+}
+
+// ColumnType is the cell type enforced by /schema validation.
+enum ColumnType {
+  COLUMN_TYPE_UNSPECIFIED = 0;
+  COLUMN_TYPE_TEXT        = 1;
+  COLUMN_TYPE_NUMBER      = 2;
+  COLUMN_TYPE_BOOL        = 3;
+  COLUMN_TYPE_JSON        = 4;
+}
+
+// SubscriptionStatus mirrors Stripe's lifecycle states we actually care about.
+enum SubscriptionStatus {
+  SUBSCRIPTION_STATUS_UNSPECIFIED = 0;
+  SUBSCRIPTION_STATUS_ACTIVE      = 1;
+  SUBSCRIPTION_STATUS_PAST_DUE    = 2;
+  SUBSCRIPTION_STATUS_CANCELED    = 3;
+  SUBSCRIPTION_STATUS_TRIALING    = 4;
+}
+
+// Message is the single envelope exchanged between every client and the relay.
+// On the wire it is encoded as canonical protojson; see docs/protocol.md.
+//
+// - seq is assigned by the relay via Redis INCR. Clients MUST omit it when sending.
+// - namespace defaults to user_id and determines broadcast fanout.
+// - payload is opaque to the relay; only the table owner interprets it.
+message Message {
+  int64                         seq        = 1;
+  string                        device_id  = 2;
+  string                        user_id    = 3;
+  string                        namespace  = 4;
+  Role                          role       = 5;
+  Op                            op         = 6;
+  string                        table      = 7;
+  google.protobuf.Struct        payload    = 8;
+  int64                         ts         = 9;  // sender local ms unix
+}
+
+// ============================== HTTP API ==============================
+//
+// Every request/response below maps to a concrete endpoint. On the wire we
+// use canonical protojson with UseProtoNames=true so field names stay
+// snake_case and enum values serialize as short lowercase ("pro",
+// "subscription_status_active", etc).  Hand-written mirrors live in each
+// language's wire/pb module; drift tests guard against divergence.
+//
+// Note: the relay's actual Go handlers predate this proto file and use
+// inline structs.  Those structs MUST match the shapes defined here field
+// for field; the drift test in relay/internal/pb enforces that where it can.
+
+// ---------------------- Auth ----------------------
+
+// POST /auth/signup
+message SignupRequest {
+  string email    = 1;
+  string password = 2;
+}
+
+// POST /auth/login
+message LoginRequest {
+  string email    = 1;
+  string password = 2;
+}
+
+// Shared response for /auth/signup and /auth/login.
+message SessionResponse {
+  string user_id       = 1;
+  string session_token = 2;  // JWT RS256, typ=session
+}
+
+// POST /auth/register (session-authenticated)
+message RegisterRequest {
+  string   device_id = 1;
+  Platform platform  = 2;
+}
+
+message RegisterResponse {
+  string token   = 1;  // JWT RS256, typ=device
+  string user_id = 2;  // doubles as default namespace
+}
+
+// GET /auth/me
+message MeResponse {
+  string          user_id    = 1;
+  string          email      = 2;
+  int64           created_at = 3;     // ms unix
+  repeated Device devices    = 4;
+}
+
+message Device {
+  string   id         = 1;
+  string   user_id    = 2;
+  Platform platform   = 3;
+  int64    created_at = 4;      // ms unix
+  int64    last_seen  = 5;      // ms unix; 0 when never seen
+}
+
+// ---------------------- Dynamic schema ----------------------
+
+// POST /schema/tables
+message SchemaCreateTableRequest {
+  string name = 1;
+}
+
+// Returned by POST /schema/tables and included inside SchemaListTablesResponse.
+message SchemaTable {
+  string                name       = 1;
+  int64                 created_at = 2;
+  repeated SchemaColumn columns    = 3;
+}
+
+message SchemaColumn {
+  string     name       = 1;
+  ColumnType type       = 2;
+  bool       required   = 3;
+  int64      created_at = 4;
+}
+
+// GET /schema/tables
+message SchemaListTablesResponse {
+  repeated SchemaTable tables = 1;
+}
+
+// POST /schema/tables/:name/columns
+message SchemaAddColumnRequest {
+  string     name     = 1;  // column name
+  ColumnType type     = 2;
+  bool       required = 3;
+}
+
+// ---------------------- API keys ----------------------
+
+// POST /keys
+message APIKeyCreateRequest {
+  string name = 1;
+}
+
+// Returned by POST /keys.  `secret` is the only place the full apvs_...
+// string is ever exposed — callers must store it themselves.
+message APIKeyCreateResponse {
+  string id         = 1;
+  string name       = 2;
+  string prefix     = 3;   // "apvs_" + first 8 random chars
+  string secret     = 4;   // full key; shown once
+  int64  created_at = 5;
+}
+
+// One entry in GET /keys.  No `secret`.
+message APIKeySummary {
+  string id           = 1;
+  string name         = 2;
+  string prefix       = 3;
+  int64  created_at   = 4;
+  int64  last_used_at = 5;   // 0 when never used
+  int64  revoked_at   = 6;   // 0 when active
+}
+
+message APIKeyListResponse {
+  repeated APIKeySummary keys = 1;
+}
+
+// ---------------------- Billing ----------------------
+
+// Plan is the authoritative shape served by GET /billing/plans.  Clients
+// SHOULD display plan rows with these limits rather than hardcoding them.
+message Plan {
+  string id                   = 1;   // "free" | "pro" | "max" | "team"
+  string name                 = 2;   // display name
+  int64  price_cents_monthly  = 3;
+  int64  messages_per_day     = 4;
+  int64  storage_bytes        = 5;
+  int64  max_devices          = 6;
+  int64  max_api_keys         = 7;
+}
+
+message BillingPlansResponse {
+  repeated Plan plans = 1;
+}
+
+// GET /billing/status.  `status` is the Stripe-ish subscription state encoded
+// as a short lowercase string ("active" | "past_due" | "canceled" | "trialing").
+message BillingStatusResponse {
+  string plan          = 1;   // plan id
+  string plan_name     = 2;
+  string status        = 3;
+  int64  period_start  = 4;
+  int64  period_end    = 5;
+  int64  messages_used = 6;
+  int64  storage_bytes = 7;
+  Plan   limits        = 8;
+}
+
+// POST /billing/checkout
+message BillingCheckoutRequest {
+  string plan_id = 1;
+}
+
+message BillingCheckoutResponse {
+  string url  = 1;
+  string mode = 2;  // "live" | "mock"
+}
+
+// ---------------------- WebSocket handshake ----------------------
+// Not a transported message; encoded into query string of GET /ws.
+// Documented here so every client generates the same field names.
+message WsHandshakeParams {
+  string token    = 1;  // required
+  int64  last_seq = 2;  // optional; triggers Redis Stream replay
+}
+
+// ---------------------- Error envelope ----------------------
+// Every 4xx/5xx response body conforms to ErrorResponse.  Clients can parse
+// either shape into ErrorResponse to extract a human-safe message.
+message ErrorResponse {
+  string error = 1;
+}

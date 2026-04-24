@@ -1,0 +1,99 @@
+[
+  {
+    "name": "provider_upsert_with_payload",
+    "message": {
+      "seq": 1024,
+      "device_id": "d1",
+      "user_id": "u1",
+      "namespace": "u1",
+      "role": "provider",
+      "op": "upsert",
+      "table": "records",
+      "payload": {"id": "r1", "data": "hello"},
+      "ts": 1714000000000
+    }
+  },
+  {
+    "name": "connector_delete_no_seq",
+    "message": {
+      "device_id": "d2",
+      "user_id": "u1",
+      "namespace": "u1",
+      "role": "connector",
+      "op": "delete",
+      "table": "records",
+      "payload": {"id": "r1"},
+      "ts": 1714000000001
+    }
+  },
+  {
+    "name": "nested_payload_roundtrip",
+    "message": {
+      "seq": 2,
+      "device_id": "d3",
+      "user_id": "u2",
+      "namespace": "u2",
+      "role": "provider",
+      "op": "upsert",
+      "table": "folders",
+      "payload": {
+        "id": "f1",
+        "name": "root",
+        "meta": {"shared": true, "count": 3}
+      },
+      "ts": 1714000000002
+    }
+  },
+  {
+    "name": "schema_table_create_broadcast",
+    "message": {
+      "seq": 10,
+      "user_id": "u1",
+      "namespace": "u1",
+      "role": "provider",
+      "op": "table_create",
+      "table": "_schema",
+      "payload": {"name": "todos"},
+      "ts": 1714000000010
+    }
+  },
+  {
+    "name": "schema_table_delete_broadcast",
+    "message": {
+      "seq": 11,
+      "user_id": "u1",
+      "namespace": "u1",
+      "role": "provider",
+      "op": "table_delete",
+      "table": "_schema",
+      "payload": {"name": "todos"},
+      "ts": 1714000000011
+    }
+  },
+  {
+    "name": "schema_column_add_broadcast",
+    "message": {
+      "seq": 12,
+      "user_id": "u1",
+      "namespace": "u1",
+      "role": "provider",
+      "op": "column_add",
+      "table": "_schema",
+      "payload": {"table": "todos", "name": "done", "type": "bool", "required": false},
+      "ts": 1714000000012
+    }
+  },
+  {
+    "name": "schema_column_delete_broadcast",
+    "message": {
+      "seq": 13,
+      "user_id": "u1",
+      "namespace": "u1",
+      "role": "provider",
+      "op": "column_delete",
+      "table": "_schema",
+      "payload": {"table": "todos", "name": "done"},
+      "ts": 1714000000013
+    }
+  }
+]

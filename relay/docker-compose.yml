@@ -1,0 +1,83 @@
+# docker-compose.yml for the appunvs relay + Redis.
+#
+# Dev:   `docker compose up`           — relay on :8080, no TLS, generated
+#                                         ephemeral JWT keypair.
+# Prod:  `docker compose --profile prod up`
+#                                      — adds nginx TLS terminator on :443
+#                                         and persists Redis via a volume.
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Dev: no persistence (faster, ephemeral).
+    # Prod override in profile sets --appendonly yes below.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  relay:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      APPUNVS_REDIS_ADDR: "redis:6379"
+      APPUNVS_LISTEN: ":8080"
+      APPUNVS_LOG_LEVEL: "info"
+      # Mount real keys here for production; empty = ephemeral in-memory RS256.
+      APPUNVS_AUTH_PRIVATE_KEY_PATH: "${APPUNVS_PRIV_KEY:-}"
+      APPUNVS_AUTH_PUBLIC_KEY_PATH:  "${APPUNVS_PUB_KEY:-}"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    # relay is stateless — scale horizontally by bumping replicas and fronting
+    # with an L7 load balancer that sticks WebSocket sessions.
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+      replicas: 1
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  # Optional TLS terminator. Not started by default; enable with:
+  #   docker compose --profile prod up
+  # Drop your cert/key under ./tls/ before using.
+  nginx:
+    profiles: ["prod"]
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      relay:
+        condition: service_healthy
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/tls:/etc/nginx/tls:ro
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  redis-data:
