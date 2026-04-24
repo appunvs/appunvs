@@ -11,13 +11,23 @@ import (
 
 // Config is the top-level runtime configuration for the relay.
 type Config struct {
-	Listen  string  `mapstructure:"listen"`
-	Redis   Redis   `mapstructure:"redis"`
-	Auth    Auth    `mapstructure:"auth"`
-	Stream  Stream  `mapstructure:"stream"`
-	Log     Log     `mapstructure:"log"`
-	DB      DB      `mapstructure:"db"`
-	Billing Billing `mapstructure:"billing"`
+	Listen   string   `mapstructure:"listen"`
+	Redis    Redis    `mapstructure:"redis"`
+	Auth     Auth     `mapstructure:"auth"`
+	Stream   Stream   `mapstructure:"stream"`
+	Log      Log      `mapstructure:"log"`
+	DB       DB       `mapstructure:"db"`
+	Billing  Billing  `mapstructure:"billing"`
+	Artifact Artifact `mapstructure:"artifact"`
+}
+
+// Artifact configures the bundle storage backend.  In v1 we ship a
+// LocalFS-backed implementation; production swap-ins (Volcengine TOS, S3,
+// R2) read from this same struct.
+type Artifact struct {
+	Backend string `mapstructure:"backend"` // "local" | "tos" | "s3"  (only "local" wired today)
+	Root    string `mapstructure:"root"`    // local FS root for bundles
+	BaseURL string `mapstructure:"base_url"`// publicly reachable base URL for served bundles
 }
 
 // Billing holds Stripe credentials. Leaving both blank flips the billing
@@ -81,6 +91,9 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("billing.stripe_webhook_secret", "")
 	v.SetDefault("billing.checkout_success_url", "https://appunvs.local/billing/success")
 	v.SetDefault("billing.checkout_cancel_url", "https://appunvs.local/billing/cancel")
+	v.SetDefault("artifact.backend", "local")
+	v.SetDefault("artifact.root", "data/artifacts")
+	v.SetDefault("artifact.base_url", "http://localhost:8080/_artifacts")
 
 	if path == "" {
 		path = "config/config.yaml"
