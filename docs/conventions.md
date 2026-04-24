@@ -14,6 +14,8 @@
 | **Stage**     | 端内运行 Box bundle 的隔离容器（沙箱）；UI tab 同名 |
 | **Bundle**    | 一份不可变的构建产物（`(box_id, version)` 唯一），存储在 artifact 后端 |
 | **Pair**      | 一次性短码，把一个 connector 设备绑定到某个已发布 Box |
+| **Workspace** | 一个 Box 对应的 bare git repo（relay 磁盘）；AI 每轮 `fs_write` 形成一次 commit；build 从 HEAD snapshot 跑 |
+| **Turn**      | 一整轮 AI 对话（user text + tool calls + tool results + final），持久化到 `ai_turns` |
 
 ## Platform
 
@@ -74,7 +76,17 @@ v1 仅支持 `rn_bundle`：Metro 输出的 JS 包 + asset 清单。
 | `version`    | 构建版本，relay 生成（`v<unix>-<12-hex>`） |
 | `short_code` | 配对短码，8 位 Crockford-without-0/1/I/O 字符 |
 | `seq`        | 全局递增序号，由 relay 通过 Redis `INCR` 分配 |
+| `turn_id`    | 一轮 AI 对话的 uuid；由 relay 的 ai 引擎生成 |
+| `commit_sha` | workspace git repo 的 commit hash（SHA-1 十六进制） |
 | `token`      | JWT（RS256）；端保存后在 WebSocket / HTTP 头携带 |
+
+## Token 类型
+
+| Typ | 典型持有者 | claims | 作用域 |
+| --- | --- | --- | --- |
+| `session`   | 登录后的前端 | `uid` | `/auth/*`、`/keys`、`/billing` 账号管理 |
+| `device`    | 注册过的设备 | `uid / did / platform` | `/ws` 数据同步、`/box` / `/pair` 管理 |
+| `namespace` | Stage 里的 bundle | `uid / did / box_id` | 只允许在某个 box 的 namespace 内读写数据（/ws Message 层） |
 
 ## 命名约定
 

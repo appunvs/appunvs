@@ -28,6 +28,7 @@ import (
 	"github.com/appunvs/appunvs/relay/internal/sequencer"
 	"github.com/appunvs/appunvs/relay/internal/store"
 	"github.com/appunvs/appunvs/relay/internal/stream"
+	"github.com/appunvs/appunvs/relay/internal/workspace"
 )
 
 func main() {
@@ -151,7 +152,15 @@ func main() {
 	// Serve the LocalFS bundles under /_artifacts so the runner can fetch
 	// them in dev.  Production binds this URL to a CDN edge instead.
 	r.Static("/_artifacts", cfg.Artifact.Root)
-	boxSvc := box.New(st.Boxes(), sandbox.NewLocalStub(), artStore)
+
+	// Per-Box git workspace.  AI fs tools commit into this, publish reads
+	// its HEAD snapshot.  Durable on the relay's local disk; future slice
+	// moves this behind an object-store-mounted filesystem.
+	ws, err := workspace.NewStore(workspace.Config{Root: cfg.Workspace.Root})
+	if err != nil {
+		logger.Fatal("workspace store", zap.Error(err))
+	}
+	boxSvc := box.New(st.Boxes(), sandbox.NewLocalStub(), artStore, ws)
 	handler.RegisterBoxRoutes(r, handler.BoxDeps{
 		Signer:  signer,
 		Service: boxSvc,

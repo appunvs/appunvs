@@ -130,12 +130,19 @@ func pairClaim(d PairingDeps) gin.HandlerFunc {
 			zap.String("claimer_user_id", claims.UserID),
 			zap.String("claimer_device_id", claims.DeviceID))
 
-		// TODO(stage-namespace-token): mint a JWT scoped to (box_id, claimer_device_id)
-		// so /ws can verify subscription requests.  Empty for v1.
+		// Issue a box-scoped namespace JWT for the Stage bundle.  The
+		// claimer device's identity is encoded so /ws fanout can target it;
+		// box_id scopes the token to the one bundle.
+		token, err := d.Signer.IssueNamespace(grant.Namespace, claims.DeviceID, b.ID)
+		if err != nil {
+			d.Log.Error("pair.claim: issue namespace token", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+			return
+		}
 		c.JSON(http.StatusOK, pb.PairClaimResponse{
 			BoxID:          b.ID,
 			Bundle:         bundlePB,
-			NamespaceToken: "",
+			NamespaceToken: token,
 		})
 	}
 }

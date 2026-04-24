@@ -20,6 +20,7 @@ import (
 	"github.com/appunvs/appunvs/relay/internal/pb"
 	"github.com/appunvs/appunvs/relay/internal/sandbox"
 	"github.com/appunvs/appunvs/relay/internal/store"
+	"github.com/appunvs/appunvs/relay/internal/workspace"
 )
 
 // SignedURLTTL is how long a freshly minted bundle URL stays valid for the
@@ -29,14 +30,17 @@ const SignedURLTTL = 30 * time.Minute
 
 // Service exposes the high-level box use-cases.
 type Service struct {
-	Boxes    *store.Boxes
-	Sandbox  sandbox.Builder
-	Artifact artifact.Store
+	Boxes     *store.Boxes
+	Sandbox   sandbox.Builder
+	Artifact  artifact.Store
+	Workspace *workspace.Store
 }
 
-// New returns a Service wired with all three collaborators.
-func New(boxes *store.Boxes, builder sandbox.Builder, store artifact.Store) *Service {
-	return &Service{Boxes: boxes, Sandbox: builder, Artifact: store}
+// New returns a Service wired with all four collaborators.  `ws` may be
+// nil for tests that want to pass source directly through `sandbox.Source`
+// without going through the git-backed workspace layer.
+func New(boxes *store.Boxes, builder sandbox.Builder, store artifact.Store, ws *workspace.Store) *Service {
+	return &Service{Boxes: boxes, Sandbox: builder, Artifact: store, Workspace: ws}
 }
 
 // Create creates a new draft box owned by providerDeviceID inside namespace.
@@ -97,6 +101,11 @@ func (s *Service) List(ctx context.Context, namespace string) ([]store.Box, erro
 // current_version, and flips the PublishState to PUBLISHED.  Returns the
 // freshly persisted Bundle.
 //
+// When a Workspace is configured and `src.Files` is non-empty, the files
+// are committed to the box's git repo first; the build then runs off the
+// workspace snapshot.  When `src.Files` is empty, the snapshot alone is
+// used — this is the "re-publish current HEAD" shape.
+//
 // This is the canonical "publish" path called both by the HTTP handler
 // (POST /box/:id/publish) and by the AI agent's publish_box tool.
 func (s *Service) BuildAndPublish(ctx context.Context, namespace string, src sandbox.Source) (store.Bundle, error) {
@@ -112,6 +121,31 @@ func (s *Service) BuildAndPublish(ctx context.Context, namespace string, src san
 		if err != nil {
 			return store.Bundle{}, err
 		}
+	}
+
+	// Persist incoming files into the git workspace, then replace src.Files
+	// with the snapshot at HEAD so the builder sees exactly what's versioned.
+	if s.Workspace != nil {
+		repo, err := s.Workspace.Open(box.ID)
+		if err != nil {
+			return store.Bundle{}, fmt.Errorf("workspace open: %w", err)
+		}
+		if len(src.Files) > 0 {
+			ops := make([]workspace.WriteOp, 0, len(src.Files))
+			for path, content := range src.Files {
+				ops = append(ops, workspace.WriteOp{Path: path, Content: content})
+			}
+			if _, err := repo.Commit(ctx, ops,
+				fmt.Sprintf("publish %s", src.Version),
+				"appunvs", "agent@appunvs"); err != nil {
+				return store.Bundle{}, fmt.Errorf("workspace commit: %w", err)
+			}
+		}
+		snap, err := repo.Snapshot(ctx)
+		if err != nil {
+			return store.Bundle{}, fmt.Errorf("workspace snapshot: %w", err)
+		}
+		src.Files = snap
 	}
 
 	// Mark the bundle as building before invoking the (potentially slow)

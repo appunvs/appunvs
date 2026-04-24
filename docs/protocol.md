@@ -143,8 +143,8 @@ error` 之一：
 ## 5. 待定 / 下一片
 
 - §3.2 chat_turn_event 的 SSE 编码（`event:` 标签 vs JSON 行流）
-- §4.2 步骤 5：connector 订阅 `box_version_update` 的 WS 子协议消息
-- `namespace_token`：为 connector 颁发 box-scoped JWT，使其 WS 订阅可被 relay 校验
+- §4.2 步骤 5：connector 订阅 `box_version_update` 的 WS 子协议消息（可选——v1 允许 connector 不订阅）
+- Stage bundle 在 WS 上的"我是一个 namespace token"鉴权校验（JWT 已下发，handler 侧 accept path 待接入）
 - artifact URL 的真签名（HMAC + expires），替代 LocalFS 的明文 URL
 
 ## 6. 不变量

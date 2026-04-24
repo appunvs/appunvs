@@ -11,14 +11,15 @@ import (
 
 // Config is the top-level runtime configuration for the relay.
 type Config struct {
-	Listen   string   `mapstructure:"listen"`
-	Redis    Redis    `mapstructure:"redis"`
-	Auth     Auth     `mapstructure:"auth"`
-	Stream   Stream   `mapstructure:"stream"`
-	Log      Log      `mapstructure:"log"`
-	DB       DB       `mapstructure:"db"`
-	Billing  Billing  `mapstructure:"billing"`
-	Artifact Artifact `mapstructure:"artifact"`
+	Listen    string    `mapstructure:"listen"`
+	Redis     Redis     `mapstructure:"redis"`
+	Auth      Auth      `mapstructure:"auth"`
+	Stream    Stream    `mapstructure:"stream"`
+	Log       Log       `mapstructure:"log"`
+	DB        DB        `mapstructure:"db"`
+	Billing   Billing   `mapstructure:"billing"`
+	Artifact  Artifact  `mapstructure:"artifact"`
+	Workspace Workspace `mapstructure:"workspace"`
 }
 
 // Artifact configures the bundle storage backend.  In v1 we ship a
@@ -28,6 +29,13 @@ type Artifact struct {
 	Backend string `mapstructure:"backend"` // "local" | "tos" | "s3"  (only "local" wired today)
 	Root    string `mapstructure:"root"`    // local FS root for bundles
 	BaseURL string `mapstructure:"base_url"`// publicly reachable base URL for served bundles
+}
+
+// Workspace configures the per-Box git repository root.  Each box gets
+// a bare repo under Root/<box_id>; AI fs tools write to it, publish reads
+// from its HEAD snapshot.
+type Workspace struct {
+	Root string `mapstructure:"root"` // e.g. data/workspaces
 }
 
 // Billing holds Stripe credentials. Leaving both blank flips the billing
@@ -94,6 +102,7 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("artifact.backend", "local")
 	v.SetDefault("artifact.root", "data/artifacts")
 	v.SetDefault("artifact.base_url", "http://localhost:8080/_artifacts")
+	v.SetDefault("workspace.root", "data/workspaces")
 
 	if path == "" {
 		path = "config/config.yaml"
