@@ -102,7 +102,7 @@ FROM app_boxes WHERE namespace = ? ORDER BY updated_at DESC`, namespace)
 	if err != nil {
 		return nil, fmt.Errorf("boxes.list: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Box
 	for rows.Next() {
 		var (

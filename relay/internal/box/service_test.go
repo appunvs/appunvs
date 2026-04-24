@@ -23,7 +23,7 @@ func TestBuildAndPublishRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("store open: %v", err)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 
 	// users(namespace) row is required by FK constraints downstream of the
 	// schema (app_tables references users) — boxes table itself doesn't

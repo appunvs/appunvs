@@ -57,6 +57,14 @@ app/
 Either way, `runtime.types.ts` is the immovable contract; both
 implementations conform to `StageRuntimeProps`.
 
+## CI status
+
+This workspace is intentionally **not** wired into CI yet — no lockfile,
+no installed deps, expo-router types un-generated. A `npm install` + `tsc
+--noEmit` job will land once `npm install` is run once and a
+`package-lock.json` committed, and once `npx expo prebuild` has been run
+to settle native deps.
+
 ## Configuring the relay URL
 
 Set `EXPO_PUBLIC_RELAY_URL` in the environment used by `expo start`, or

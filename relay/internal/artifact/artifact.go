@@ -115,7 +115,7 @@ func (l *LocalFS) SignURL(_ context.Context, hash string, ttl time.Duration) (st
 func hexFromHash(hash string) (string, error) {
 	const prefix = "sha256:"
 	if len(hash) <= len(prefix) || hash[:len(prefix)] != prefix {
-		return "", fmt.Errorf("artifact: hash must start with sha256:")
+		return "", errors.New("artifact: hash must start with sha256")
 	}
 	return hash[len(prefix):], nil
 }
