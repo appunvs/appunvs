@@ -188,7 +188,10 @@ func TestSignupAutoSubscribesToFree(t *testing.T) {
 	}
 }
 
-// TestBillingPlansPublic: /billing/plans returns 3 plans and requires no auth.
+// TestBillingPlansPublic: /billing/plans returns the seeded plan list
+// (free / pro / max) and requires no auth. Expected count tracks
+// `store.CanonicalPlans`; update both together when a plan is added or
+// removed.
 func TestBillingPlansPublic(t *testing.T) {
 	rig := newBillingRig(t)
 	var body struct {
@@ -198,8 +201,8 @@ func TestBillingPlansPublic(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("plans code=%d", code)
 	}
-	if len(body.Plans) != 4 {
-		t.Fatalf("plans count=%d, want 4 (free/pro/max/team)", len(body.Plans))
+	if len(body.Plans) != len(store.CanonicalPlans) {
+		t.Fatalf("plans count=%d, want %d", len(body.Plans), len(store.CanonicalPlans))
 	}
 }
 
