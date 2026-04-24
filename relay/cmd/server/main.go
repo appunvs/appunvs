@@ -184,27 +184,45 @@ func main() {
 	// engine — useful for UI work and CI where we don't want to burn
 	// provider tokens.  Real production config flips backend=deepseek
 	// (or any OpenAI-compatible endpoint) and supplies APIKey.
+	// AI engine selection.  `backend` is either `stub` (the echo engine
+	// used for UI dev and CI) or a provider id from `ai.Providers`
+	// (deepseek / volcengine / moonshot / zhipu / dashscope).  Any
+	// OpenAI-compatible endpoint is reachable by setting `backend` to
+	// the empty string but supplying `base_url` + `model` + `api_key`.
 	var aiEngine ai.Engine
-	switch cfg.AI.Backend {
-	case "deepseek", "openai-compatible":
-		de, err := ai.NewDeepSeekEngine(ai.Config{
+	switch backend := cfg.AI.Backend; backend {
+	case "", "stub":
+		aiEngine = ai.NewStub()
+		logger.Info("ai engine wired", zap.String("backend", "stub"))
+	default:
+		// Treat anything else as a provider id; resolve via registry.
+		// Unknown ids fail loudly at startup rather than at first turn.
+		cfgPicked := ai.Config{
+			Provider:  backend,
 			BaseURL:   cfg.AI.BaseURL,
 			APIKey:    cfg.AI.APIKey,
 			Model:     cfg.AI.Model,
 			MaxIters:  cfg.AI.MaxIters,
 			MaxTokens: cfg.AI.MaxTokens,
-		}, ws, boxSvc, st.Turns(), logger)
+		}
+		// Legacy alias: callers who set `backend=openai-compatible`
+		// want the raw openai client without a provider lookup.
+		if backend == "openai-compatible" {
+			cfgPicked.Provider = ""
+		}
+		engine, err := ai.NewOpenAIEngine(cfgPicked, ws, boxSvc, st.Turns(), logger)
 		if err != nil {
 			logger.Fatal("ai engine", zap.Error(err))
 		}
-		aiEngine = de
-		logger.Info("ai engine wired",
-			zap.String("backend", cfg.AI.Backend),
-			zap.String("model", cfg.AI.Model),
-			zap.String("base_url", cfg.AI.BaseURL))
-	default:
-		aiEngine = ai.NewStub()
-		logger.Info("ai engine wired", zap.String("backend", "stub"))
+		aiEngine = engine
+		fields := []zap.Field{
+			zap.String("backend", backend),
+			zap.String("model", engine.Provider().ID+"/"+cfgPicked.Model),
+		}
+		if p := engine.Provider(); p.ID != "" {
+			fields = append(fields, zap.String("provider_name", p.Name))
+		}
+		logger.Info("ai engine wired", fields...)
 	}
 	handler.RegisterAIRoutes(r, handler.AIDeps{
 		Signer: signer,

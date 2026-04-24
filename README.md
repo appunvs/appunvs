@@ -76,16 +76,24 @@ appunvs/
 
 ## AI agent
 
-AI 层用 **OpenAI 兼容协议**，一个客户端换 `base_url + model + api_key` 就能
-切任何国内供应商。默认 DeepSeek。
+AI 层走 **OpenAI 兼容协议**，内置 5 家国内供应商的 base_url + 默认模型；
+`ai.backend` 直接填 provider id 即可切换。完整清单、切换示例、增加新供应商
+的步骤见 [docs/providers.md](docs/providers.md)。
+
+| Provider ID | 厂商 | 默认模型 |
+| --- | --- | --- |
+| `deepseek` | DeepSeek | `deepseek-chat`（可换 `deepseek-reasoner`） |
+| `volcengine` | 火山方舟 | 需指定**接入点 id** `ep-...` |
+| `moonshot` | Moonshot Kimi | `kimi-k2-turbo-preview` |
+| `zhipu` | 智谱 GLM | `glm-4.6` |
+| `dashscope` | 阿里百炼（Qwen） | `qwen3-coder-plus` |
 
 ```yaml
-# config.yaml
+# config.yaml — 最小配置
 ai:
-  backend:   deepseek              # stub / deepseek / openai-compatible
-  base_url:  https://api.deepseek.com/v1
+  backend:   deepseek              # stub / deepseek / volcengine / moonshot / zhipu / dashscope
   api_key:   ${DEEPSEEK_API_KEY}
-  model:     deepseek-chat         # 或 deepseek-reasoner / glm-4.6 / qwen3-coder-plus
+  # base_url / model 留空时用 registry 默认；覆盖只在自建代理或换模型时需要
   max_iters: 10
   max_tokens: 8000
 ```
@@ -191,6 +199,7 @@ export APPUNVS_AI_API_KEY=sk-...
 - [docs/protocol.md](docs/protocol.md) — HTTP / WebSocket 接口与事件
 - [docs/conventions.md](docs/conventions.md) — 术语、状态机、命名约定、token 类型
 - [docs/auth.md](docs/auth.md) — 账号与设备鉴权细节
+- [docs/providers.md](docs/providers.md) — AI 供应商清单 / 配置 / 新增步骤
 - [app/README.md](app/README.md) — 前端三端构建 · Stage runtime 契约
 - [desktop/README.md](desktop/README.md) — Tauri 壳的 dev / build
 
