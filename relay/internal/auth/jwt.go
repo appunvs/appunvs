@@ -22,26 +22,33 @@ type Claims struct {
 	UserID   string `json:"uid"`
 	DeviceID string `json:"did,omitempty"`
 	Platform string `json:"plat,omitempty"`
-	// Typ distinguishes session tokens ("session", dashboard API) from
-	// device tokens ("device", WebSocket). A session token has no DeviceID.
+	// BoxID is populated only for TokenNamespace: it scopes the token to
+	// read/write the given Box's namespace data (via /ws Message protocol).
+	BoxID string `json:"box,omitempty"`
+	// Typ distinguishes the token flavors.  Session / device were the
+	// original pair; namespace was added for the Stage sandbox to hold a
+	// box-scoped credential it can use against /ws without touching the
+	// claimer device's root device token.
 	Typ string `json:"typ,omitempty"`
 	jwt.RegisteredClaims
 }
 
 // Token flavors.
 const (
-	TokenSession = "session"
-	TokenDevice  = "device"
+	TokenSession   = "session"
+	TokenDevice    = "device"
+	TokenNamespace = "namespace"
 )
 
 // Signer issues and verifies RS256 tokens.
 type Signer struct {
-	priv        *rsa.PrivateKey
-	pub         *rsa.PublicKey
-	issuer      string
-	audience    string
-	sessionTTL  time.Duration
-	deviceTTL   time.Duration
+	priv         *rsa.PrivateKey
+	pub          *rsa.PublicKey
+	issuer       string
+	audience     string
+	sessionTTL   time.Duration
+	deviceTTL    time.Duration
+	namespaceTTL time.Duration
 }
 
 // NewSigner loads keys from the given paths.  When either path is empty or
@@ -59,7 +66,13 @@ func NewSigner(privPath, pubPath, issuer, audience string, sessionTTL, deviceTTL
 	if sessionTTL == 0 {
 		sessionTTL = 24 * time.Hour
 	}
-	s := &Signer{issuer: issuer, audience: audience, sessionTTL: sessionTTL, deviceTTL: deviceTTL}
+	s := &Signer{
+		issuer:       issuer,
+		audience:     audience,
+		sessionTTL:   sessionTTL,
+		deviceTTL:    deviceTTL,
+		namespaceTTL: 24 * time.Hour, // Stage bundles are expected to re-pair daily at most.
+	}
 
 	priv, err := loadPrivateKey(privPath)
 	if err != nil {
@@ -90,12 +103,23 @@ func NewSigner(privPath, pubPath, issuer, audience string, sessionTTL, deviceTTL
 // IssueSession mints a session JWT for dashboard API use.
 // Session tokens have no DeviceID.
 func (s *Signer) IssueSession(userID string) (string, error) {
-	return s.issue(userID, "", "", TokenSession, s.sessionTTL)
+	return s.issue(userID, "", "", "", TokenSession, s.sessionTTL)
 }
 
 // IssueDevice mints a device JWT for WebSocket use.
 func (s *Signer) IssueDevice(userID, deviceID, platform string) (string, error) {
-	return s.issue(userID, deviceID, platform, TokenDevice, s.deviceTTL)
+	return s.issue(userID, deviceID, platform, "", TokenDevice, s.deviceTTL)
+}
+
+// IssueNamespace mints a box-scoped JWT for Stage bundles to carry when
+// they talk to /ws on behalf of an AI-generated app.  Claims identify the
+// claimer device (so /ws fanout can still target devices) and the box
+// whose data the bundle is authorized to read/write.
+func (s *Signer) IssueNamespace(userID, deviceID, boxID string) (string, error) {
+	if boxID == "" {
+		return "", errors.New("auth: IssueNamespace needs boxID")
+	}
+	return s.issue(userID, deviceID, "", boxID, TokenNamespace, s.namespaceTTL)
 }
 
 // Issue is the legacy single-flavor entrypoint. Present-tense callers should
@@ -105,12 +129,13 @@ func (s *Signer) Issue(userID, deviceID, platform string) (string, error) {
 	return s.IssueDevice(userID, deviceID, platform)
 }
 
-func (s *Signer) issue(userID, deviceID, platform, typ string, ttl time.Duration) (string, error) {
+func (s *Signer) issue(userID, deviceID, platform, boxID, typ string, ttl time.Duration) (string, error) {
 	now := time.Now()
 	claims := &Claims{
 		UserID:   userID,
 		DeviceID: deviceID,
 		Platform: platform,
+		BoxID:    boxID,
 		Typ:      typ,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    s.issuer,
@@ -160,6 +185,13 @@ func (s *Signer) Verify(tokenStr string, wantTyp string) (*Claims, error) {
 		}
 		if claims.DeviceID == "" {
 			return nil, errors.New("auth: device token missing did")
+		}
+	case TokenNamespace:
+		if typ != TokenNamespace {
+			return nil, errors.New("auth: namespace token required")
+		}
+		if claims.BoxID == "" {
+			return nil, errors.New("auth: namespace token missing box")
 		}
 	default:
 		return nil, fmt.Errorf("auth: unknown want typ %q", wantTyp)

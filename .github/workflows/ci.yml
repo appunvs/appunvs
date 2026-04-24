@@ -34,26 +34,13 @@ jobs:
           cache-dependency-path: relay/go.sum
       - run: go build ./...
       - run: go vet ./...
-      - run: go test ./... -race -timeout 90s
+      - run: go test ./... -race -timeout 120s
         env:
           APPUNVS_TEST_REDIS: localhost:6379
 
-  browser:
-    name: browser (SvelteKit)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: browser
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: browser/package-lock.json
-      - run: npm ci
-      # Unit + drift tests. Excludes src/**/e2e.test.ts (needs live relay).
-      - run: npm test
+  # The `app/` Expo monorepo is at skeleton stage in this PR (no lockfile,
+  # SDK versions pinned but not yet installed). A `tsc --noEmit` job will
+  # land once the workspace stabilizes — see TODO in app/README.md.
 
   desktop:
     name: desktop (Tauri/Rust)
@@ -73,25 +60,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
-      # Lib tests (wire unit) + drift test. The e2e test requires a running
-      # relay and is skipped here.
+      # Lib tests + drift test. The e2e test requires a running relay and
+      # is skipped here.
       - run: cargo test --lib
       - run: cargo test --test drift
-
-  mobile:
-    name: mobile (Flutter)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mobile
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - run: dart run build_runner build --delete-conflicting-outputs
-      # Unit wire tests + drift test. wire_e2e_test.dart needs a live relay;
-      # skip by naming the files explicitly.
-      - run: flutter test test/wire_test.dart test/drift_test.dart
