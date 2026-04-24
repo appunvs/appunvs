@@ -16,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
+	"github.com/appunvs/appunvs/relay/internal/ai"
 	"github.com/appunvs/appunvs/relay/internal/artifact"
 	"github.com/appunvs/appunvs/relay/internal/auth"
 	"github.com/appunvs/appunvs/relay/internal/billing"
@@ -177,6 +178,40 @@ func main() {
 	logger.Info("stage pipeline wired",
 		zap.String("artifact_backend", cfg.Artifact.Backend),
 		zap.String("artifact_root", cfg.Artifact.Root))
+
+	// AI agent: DeepSeek by default via OpenAI-compatible protocol.  Set
+	// AI_BACKEND=stub (or leave blank without an APIKey) to run the echo
+	// engine — useful for UI work and CI where we don't want to burn
+	// provider tokens.  Real production config flips backend=deepseek
+	// (or any OpenAI-compatible endpoint) and supplies APIKey.
+	var aiEngine ai.Engine
+	switch cfg.AI.Backend {
+	case "deepseek", "openai-compatible":
+		de, err := ai.NewDeepSeekEngine(ai.Config{
+			BaseURL:   cfg.AI.BaseURL,
+			APIKey:    cfg.AI.APIKey,
+			Model:     cfg.AI.Model,
+			MaxIters:  cfg.AI.MaxIters,
+			MaxTokens: cfg.AI.MaxTokens,
+		}, ws, boxSvc, st.Turns(), logger)
+		if err != nil {
+			logger.Fatal("ai engine", zap.Error(err))
+		}
+		aiEngine = de
+		logger.Info("ai engine wired",
+			zap.String("backend", cfg.AI.Backend),
+			zap.String("model", cfg.AI.Model),
+			zap.String("base_url", cfg.AI.BaseURL))
+	default:
+		aiEngine = ai.NewStub()
+		logger.Info("ai engine wired", zap.String("backend", "stub"))
+	}
+	handler.RegisterAIRoutes(r, handler.AIDeps{
+		Signer: signer,
+		Engine: aiEngine,
+		Box:    boxSvc,
+		Log:    logger,
+	})
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,

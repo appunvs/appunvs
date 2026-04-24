@@ -20,6 +20,7 @@ type Config struct {
 	Billing   Billing   `mapstructure:"billing"`
 	Artifact  Artifact  `mapstructure:"artifact"`
 	Workspace Workspace `mapstructure:"workspace"`
+	AI        AI        `mapstructure:"ai"`
 }
 
 // Artifact configures the bundle storage backend.  In v1 we ship a
@@ -36,6 +37,19 @@ type Artifact struct {
 // from its HEAD snapshot.
 type Workspace struct {
 	Root string `mapstructure:"root"` // e.g. data/workspaces
+}
+
+// AI configures the chat agent engine.  Default backend is DeepSeek
+// via the OpenAI-compatible protocol; swap `base_url` / `model` / `api_key`
+// to point at 火山 Ark, 阿里百炼, 智谱 GLM, Moonshot, or any other
+// OpenAI-compatible provider without touching the engine code.
+type AI struct {
+	Backend   string `mapstructure:"backend"`   // "deepseek" | "stub" | "openai-compatible"
+	BaseURL   string `mapstructure:"base_url"`
+	APIKey    string `mapstructure:"api_key"`
+	Model     string `mapstructure:"model"`
+	MaxIters  int    `mapstructure:"max_iters"`  // hard cap per turn
+	MaxTokens int    `mapstructure:"max_tokens"` // per-response cap
 }
 
 // Billing holds Stripe credentials. Leaving both blank flips the billing
@@ -103,6 +117,11 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("artifact.root", "data/artifacts")
 	v.SetDefault("artifact.base_url", "http://localhost:8080/_artifacts")
 	v.SetDefault("workspace.root", "data/workspaces")
+	v.SetDefault("ai.backend", "stub")
+	v.SetDefault("ai.base_url", "https://api.deepseek.com/v1")
+	v.SetDefault("ai.model", "deepseek-chat")
+	v.SetDefault("ai.max_iters", 10)
+	v.SetDefault("ai.max_tokens", 8000)
 
 	if path == "" {
 		path = "config/config.yaml"
