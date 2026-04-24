@@ -30,6 +30,19 @@ type Plan struct {
 // CanonicalPlans is the source of truth the migration seeds into SQLite.
 // Tests (and the future frontend bundle) can import this slice directly so
 // there's a single authoritative definition of what each tier allows.
+// CanonicalPlans is the seed list for the `plans` table.  Prices are in
+// RMB *fen* (¥1 = 100 fen), matching `price_cents_monthly`'s int64 shape
+// (the column name predates the currency choice — see docs/billing.md
+// once that lands).  The Chinese coding-tool market caps Pro at roughly
+// ¥30–50 and Max at ¥150–250; these values stay inside that band:
+//
+//   Free  — acquisition / tryout.  Heavy caps; watermarked bundles.
+//   Pro   — ¥39/mo.  The mainline single-seat tier.
+//   Max   — ¥199/mo.  Heavy personal use; priority queue will land later.
+//
+// Existing rows in `plans` are NOT overwritten by the seed (the migration
+// uses INSERT OR IGNORE).  Operators who change a shipped plan must run
+// a separate data migration; shipping-time tweaks are safe.
 var CanonicalPlans = []Plan{
 	{
 		ID:                "free",
@@ -43,7 +56,7 @@ var CanonicalPlans = []Plan{
 	{
 		ID:                "pro",
 		Name:              "Pro",
-		PriceCentsMonthly: 2_000,
+		PriceCentsMonthly: 3_900, // ¥39
 		MessagesPerDay:    100_000,
 		StorageBytes:      1 * 1024 * 1024 * 1024, // 1 GiB
 		MaxDevices:        10,
@@ -54,21 +67,11 @@ var CanonicalPlans = []Plan{
 		// ceilings than Pro across every dimension, still single-seat.
 		ID:                "max",
 		Name:              "Max",
-		PriceCentsMonthly: 10_000,
+		PriceCentsMonthly: 19_900, // ¥199
 		MessagesPerDay:    500_000,
 		StorageBytes:      5 * 1024 * 1024 * 1024, // 5 GiB
 		MaxDevices:        25,
 		MaxAPIKeys:        25,
-	},
-	{
-		// Team is multi-seat / collaborative; price is per-seat.
-		ID:                "team",
-		Name:              "Team",
-		PriceCentsMonthly: 5_000,
-		MessagesPerDay:    1_000_000,
-		StorageBytes:      10 * 1024 * 1024 * 1024, // 10 GiB
-		MaxDevices:        50,
-		MaxAPIKeys:        50,
 	},
 }
 
