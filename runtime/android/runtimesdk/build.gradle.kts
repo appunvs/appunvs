@@ -1,3 +1,9 @@
+// Runtime SDK Android library module.  Lives inside the RN init's
+// gradle project so it can pick up the RN gradle plugin + the
+// react-android / hermes-android artifacts when D3.b adds them.
+//
+// The plugin classpaths come from the root build.gradle's `buildscript {
+// dependencies { classpath(...) } }` — no need to repeat versions here.
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
@@ -5,7 +11,9 @@ plugins {
 
 android {
     namespace = "com.appunvs.runtimesdk"
-    compileSdk = 35
+    // Match the RN init's compileSdk (36) so AGP doesn't whine about
+    // mixed compileSdk between modules.
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 24
@@ -27,9 +35,4 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-
-    // No Compose, no React Native — D2.a is a pure kotlin shell exposing
-    // a single `RuntimeSDK.hello()` static method.  PR D2.c adds the JNI
-    // bridge to Hermes + RN's C++ runtime; at that point we link
-    // libhermes.so / libreact_render.so etc. via dynamic features.
 }

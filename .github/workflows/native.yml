@@ -97,7 +97,7 @@ jobs:
           gradle assembleDebug --stacktrace --info --no-daemon
 
   runtime_sdk_ios:
-    name: runtime/sdk/ios (Framework)
+    name: runtime SDK iOS (Framework)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -117,7 +117,7 @@ jobs:
           ls -la runtime/build/ios/RuntimeSDK.xcframework
 
   runtime_sdk_android:
-    name: runtime/sdk/android (Library)
+    name: runtime SDK Android (Library)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
