@@ -25,32 +25,33 @@ final class AuthStore: ObservableObject {
     @Published private(set) var me: MeResponse?
     @Published var lastError: String?
 
-    /// Currently active token surfaced to network clients via closure.
-    /// During `signup` / `login` it briefly holds the **session** token
-    /// (so /auth/register works) and is then replaced by the **device**
-    /// token for the rest of the session.
-    private var token: String?
+    /// Currently active token surfaced to network clients.  Kept in a
+    /// thread-safe Sendable container so the URLSession / SSE workers
+    /// can read it from any thread while the @MainActor AuthStore
+    /// rotates it (session → device → cleared on signout).
+    private let tokenStore = TokenStore()
+    private var token: String? {
+        get { tokenStore.value }
+        set { tokenStore.value = newValue }
+    }
 
     private let http: HTTPClient
     private let auth: AuthAPI
 
     init() {
-        // The HTTPClient captures `self` weakly via the closure so token
-        // rotations are picked up by in-flight calls without re-injecting.
-        var tokenRef: (() -> String?)?
-        let provider: @Sendable () -> String? = { tokenRef?() }
-        self.http = HTTPClient(tokenProvider: provider)
+        let store = self.tokenStore
+        self.http = HTTPClient(tokenProvider: { store.value })
         self.auth = AuthAPI(http: self.http)
-        tokenRef = { [weak self] in self?.token }
     }
 
     /// Shared client used by Box / AI stores so they share the same
     /// token rotation surface.
     var sharedHTTP: HTTPClient { http }
 
-    /// SSE client tied to the same token closure as `sharedHTTP`.
+    /// SSE client tied to the same token store as `sharedHTTP`.
     func aiClient() -> AISSEClient {
-        AISSEClient(tokenProvider: { [weak self] in self?.token })
+        let store = self.tokenStore
+        return AISSEClient(tokenProvider: { store.value })
     }
 
     // MARK: - Lifecycle
@@ -137,5 +138,19 @@ final class AuthStore: ObservableObject {
         static let deviceToken = "appunvs.deviceToken"
         static let userID      = "appunvs.userID"
         static let deviceID    = "appunvs.deviceID"
+    }
+}
+
+/// Thread-safe Sendable container for the active bearer token.
+/// Lives outside the @MainActor AuthStore so HTTPClient / AISSEClient
+/// can read the current value from background threads without crossing
+/// actor boundaries on every request.
+final class TokenStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: String?
+
+    var value: String? {
+        get { lock.lock(); defer { lock.unlock() }; return _value }
+        set { lock.lock(); defer { lock.unlock() }; _value = newValue }
     }
 }

@@ -66,7 +66,7 @@ final class ChatStore: ObservableObject {
         let assistantID = assistant.id
         currentTask = Task {
             do {
-                for try await frame in await sse.turn(boxID: boxID, text: text) {
+                for try await frame in sse.turn(boxID: boxID, text: text) {
                     switch frame {
                     case .token(_, let text):
                         appendToken(boxID: boxID, id: assistantID, text: text)

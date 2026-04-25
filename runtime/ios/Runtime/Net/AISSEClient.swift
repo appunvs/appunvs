@@ -27,7 +27,11 @@ struct AITurnRequest: Encodable {
     }
 }
 
-actor AISSEClient {
+/// Plain final class instead of an actor — there's no mutable state to
+/// synchronize, and we want the `turn(...)` callsite (and the closure
+/// it spawns) to read `baseURL` / `session` / `tokenProvider` without
+/// hopping actors on every byte of the SSE stream.
+final class AISSEClient: @unchecked Sendable {
     private let baseURL: URL
     private let session: URLSession
     private let tokenProvider: @Sendable () -> String?
