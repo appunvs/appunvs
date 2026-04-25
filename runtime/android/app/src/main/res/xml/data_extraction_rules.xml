@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Required since Android 12 (SDK 31).  We don't currently exclude
+     anything from cloud/device-transfer backups; future MMKV-based
+     credential stores must add explicit excludes here. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- include rules go here -->
+    </cloud-backup>
+    <device-transfer>
+        <!-- include rules go here -->
+    </device-transfer>
+</data-extraction-rules>

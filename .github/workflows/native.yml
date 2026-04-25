@@ -1,0 +1,86 @@
+name: Native
+
+on:
+  pull_request:
+    paths:
+      - 'runtime/**'
+      - '.github/workflows/native.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'runtime/**'
+      - '.github/workflows/native.yml'
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: runtime/ios (Xcode)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: runtime/ios
+        run: xcodegen generate
+
+      - name: Build (Debug, simulator)
+        working-directory: runtime/ios
+        # Skip code signing — CI doesn't have a developer team set; the
+        # build target is the simulator slice which doesn't need signing.
+        run: |
+          xcodebuild \
+            -project Runtime.xcodeproj \
+            -scheme Runtime \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build | xcbeautify || xcodebuild \
+              -project Runtime.xcodeproj \
+              -scheme Runtime \
+              -configuration Debug \
+              -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+              -derivedDataPath build \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY="" \
+              build
+
+  android:
+    name: runtime/android (Gradle)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-35
+            build-tools;35.0.0
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # CI doesn't run `gradle wrapper` first; Gradle from the action runs
+      # tasks directly against the project.
+      - name: Build debug APK
+        working-directory: runtime/android
+        run: gradle assembleDebug --stacktrace --no-daemon
