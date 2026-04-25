@@ -1,9 +1,9 @@
 // Module-level Gradle build for the host shell.
 //
 // Compose-only UI with a single Activity holding the three top-level
-// tabs (Chat / Stage / Profile).  Network / sub-runtime modules will
-// be added as separate Gradle modules under runtime/android/ once they
-// land.
+// tabs (Chat / Stage / Profile).  The Stage tab links the runtime SDK
+// (built from runtime/ → runtime.aar) to mount AI-generated bundles
+// inside a Hermes-backed view; the rest of the host UI is pure Compose.
 
 plugins {
     alias(libs.plugins.android.application)

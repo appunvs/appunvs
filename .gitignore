@@ -1,6 +1,6 @@
-# Per-language ignores live in their own subtree (runtime/ios, runtime/android,
-# relay/, etc.).  This top-level file only catches scratch directories that
-# tooling drops at the repo root.
+# Per-language ignores live in their own subtree (appunvs/ios, appunvs/android,
+# runtime/, relay/, etc.).  This top-level file only catches scratch directories
+# that tooling drops at the repo root.
 
 # Worktrees created by background subagents.  These are local-only — the
 # corresponding work is delivered via PRs from the agent's own branches.
