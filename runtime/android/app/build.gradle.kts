@@ -72,6 +72,11 @@ dependencies {
     // DataStore for theme override persistence (UserDefaults equivalent).
     implementation(libs.androidx.datastore.preferences)
 
+    // Material XML themes — `Theme.Material3.DayNight.NoActionBar` is
+    // resolved here; Compose Material3 (above) provides runtime
+    // components, this provides the splash/window theme XML.
+    implementation(libs.google.material)
+
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation(libs.junit)
