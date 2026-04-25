@@ -1,30 +1,37 @@
 #!/usr/bin/env bash
-# build-android.sh — produces runtime.aar, the artifact that the host
-# Android app (appunvs/android/) links to gain JS/Hermes capability
-# inside its Stage tab.
+# build-android.sh — produces runtime.aar, the artifact the host Android
+# app (appunvs/android/) links to mount AI bundles inside its Stage tab.
 #
-# What this should do (PR D2 lands the actual implementation):
+# D2.a (this PR): builds the empty-shell library that exposes one method
+# — `RuntimeSDK.hello()`.  Pure kotlin, no RN, no Hermes, no JNI.
+# Proves the gradle → AAR → host-link chain works.
 #
-#   1. Run gradle on runtime/android/ with a release variant that bundles
-#        - Hermes engine (libhermes.so, per-ABI: arm64-v8a, armeabi-v7a,
-#          x86_64)
-#        - React Native's C++ runtime + JSI (libreact_render.so etc.)
-#        - The curated Tier 1 native modules (see ../MODULES.md)
-#        - The SubRuntime JNI bridge that exposes the Java/Kotlin
-#          entry points to host code (`SubRuntime.spawn(bundleURL) ->
-#          SubRuntimeView`)
+# D2.c will:
+#   * link Hermes engine (libhermes.so per ABI: arm64-v8a, armeabi-v7a, x86_64)
+#   * link React Native's C++ runtime (libreact_render*.so)
+#   * link the curated Tier 1 native modules (see ../MODULES.md)
+#   * widen the SDK surface to RuntimeView (loadBundle/reset)
+#   * ship consumer ProGuard keep-rules for the JNI surface
 #
-#   2. ProGuard / R8 keep rules for the JNI surface so host shrinking
-#      doesn't strip the bridge symbols
-#
-#   3. Copy the resulting runtime.aar to ./build/android/
-#
-# For PR D2-prep this script is a stub.
+# Output: runtime/build/android/runtime.aar
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-echo "build-android.sh: stub — PR D2 implements the real AAR build."
-echo "Inputs: runtime/android/, runtime/src/, runtime/MODULES.md (tier 1)"
-echo "Output: runtime/build/android/runtime.aar"
-exit 0
+OUT="build/android"
+mkdir -p "$OUT"
+
+# Use the standalone gradle project under sdk/android/ — see its
+# settings.gradle.kts for why this isn't a sibling of the dev-harness
+# `runtime/android/` project.
+(cd sdk/android && gradle :runtimesdk:assembleRelease --no-daemon)
+
+AAR="sdk/android/runtimesdk/build/outputs/aar/runtimesdk-release.aar"
+if [ ! -f "$AAR" ]; then
+  echo "[build-android] expected AAR at $AAR but it's missing" >&2
+  exit 1
+fi
+
+cp "$AAR" "$OUT/runtime.aar"
+
+echo "==> built $OUT/runtime.aar"

@@ -1,0 +1,25 @@
+name: RuntimeSDK
+options:
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+targets:
+  RuntimeSDK:
+    # Static framework: simpler than dynamic for an empty C-only SDK,
+    # and what most iOS SDK distributions ship as today (no @rpath
+    # complications, no separate dylib in the host bundle).  We can
+    # flip to `framework` (dynamic) once D2.c needs RN's dyld libs.
+    type: framework.static
+    platform: iOS
+    sources:
+      - path: SDK
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_NAME: RuntimeSDK
+        PRODUCT_BUNDLE_IDENTIFIER: com.appunvs.runtimesdk
+        DEFINES_MODULE: YES
+        BUILD_LIBRARY_FOR_DISTRIBUTION: YES
+        SKIP_INSTALL: NO
