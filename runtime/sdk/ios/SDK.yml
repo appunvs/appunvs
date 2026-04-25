@@ -2,45 +2,24 @@ name: RuntimeSDK
 options:
   deploymentTarget:
     iOS: "16.0"
-  xcodeVersion: "16.0"
   createIntermediateGroups: true
-  generateEmptyDirectories: false
-
-settings:
-  base:
-    SWIFT_VERSION: "5.10"
-    BUILD_LIBRARY_FOR_DISTRIBUTION: YES
-    SKIP_INSTALL: NO
-    DEFINES_MODULE: YES
-    SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
 
 targets:
   RuntimeSDK:
-    type: framework
+    # Static framework: simpler than dynamic for an empty C-only SDK,
+    # and what most iOS SDK distributions ship as today (no @rpath
+    # complications, no separate dylib in the host bundle).  We can
+    # flip to `framework` (dynamic) once D2.c needs RN's dyld libs.
+    type: framework.static
     platform: iOS
     sources:
       - path: SDK
-        # Mark every .h here as a public umbrella header — RuntimeSDK.h
-        # is the only header today, and host code reaches it via
-        # `import RuntimeSDK` / `#import <RuntimeSDK/RuntimeSDK.h>`.
-        # Without `public`, headers default to "Project" visibility and
-        # `import RuntimeSDK` from host code can't find the symbols.
-        headerVisibility: public
-    info:
-      # Let XcodeGen generate the Info.plist; the prior hand-written
-      # SDK/Info.plist would have collided with the auto-generated one.
-      # Output under build/ so the existing `build/` gitignore catches
-      # it; xcodegen creates the dir if missing.
-      path: build/RuntimeSDK-Info.plist
-      properties:
-        CFBundleVersion: "1"
-        CFBundleShortVersionString: "0.1.0"
+        excludes:
+          - "**/.DS_Store"
     settings:
       base:
         PRODUCT_NAME: RuntimeSDK
         PRODUCT_BUNDLE_IDENTIFIER: com.appunvs.runtimesdk
         DEFINES_MODULE: YES
-        CLANG_ENABLE_MODULES: YES
-        # Empty-shell SDK has no Swift code, no swift_module to ship.
-        # Stays a pure C ABI so host code can link without dragging
-        # the Swift runtime into the framework's umbrella module.
+        BUILD_LIBRARY_FOR_DISTRIBUTION: YES
+        SKIP_INSTALL: NO

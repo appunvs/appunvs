@@ -23,11 +23,18 @@ mkdir -p "$OUT"
 # 1. Generate the framework xcodeproj from sdk/ios/SDK.yml.  We use
 #    XcodeGen rather than committing the .xcodeproj because pbxproj
 #    is hostile to manual edits and merge conflicts.
-#
-#    `--spec` picks the yml; `--project` is the OUTPUT DIRECTORY (not
-#    filename — the project filename comes from `name:` in the spec).
-#    Default project dir is `.`, which we make explicit for clarity.
+echo "==> xcodegen --version"
+xcodegen --version || true
+
+echo "==> xcodegen generate (sdk/ios/SDK.yml)"
 (cd sdk/ios && xcodegen generate --spec SDK.yml --project .)
+
+echo "==> generated project tree"
+ls -la sdk/ios/
+ls -la sdk/ios/RuntimeSDK.xcodeproj/ 2>&1 || echo "(xcodeproj missing)"
+
+echo "==> available schemes"
+xcodebuild -list -project sdk/ios/RuntimeSDK.xcodeproj || true
 
 DEVICE_ARCHIVE="$OUT/RuntimeSDK-iphoneos.xcarchive"
 SIM_ARCHIVE="$OUT/RuntimeSDK-iphonesimulator.xcarchive"
