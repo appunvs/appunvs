@@ -1,10 +1,11 @@
-// MainActivity — single Activity hosting the entire Compose tree.
-// Three top-level tabs (Chat / Stage / Profile) live inside; nothing
-// else routes to its own Activity in this design.
+// MainActivity — single Activity hosting the Compose tree.  Three
+// top-level tabs (Chat / Stage / Profile) live inside; nothing else
+// routes to its own Activity in this design.
 //
-// Future: when SubRuntime native module lands, the Stage tab embeds
-// a native View that hosts a sandboxed Hermes runtime; everything
-// else stays Compose.
+// AppState owns host-wide observable state (theme override + DataStore
+// persistence).  MockStore provides in-memory boxes + chat fixtures
+// while the network layer is being designed; the real /box / /pair /
+// /ai/turn clients land in a follow-up PR.
 package com.appunvs.runtime
 
 import android.os.Bundle
@@ -34,6 +35,7 @@ import com.appunvs.runtime.screens.ChatScreen
 import com.appunvs.runtime.screens.ProfileScreen
 import com.appunvs.runtime.screens.StageScreen
 import com.appunvs.runtime.state.AppState
+import com.appunvs.runtime.state.MockStore
 import com.appunvs.runtime.theme.RuntimeTheme
 
 class MainActivity : ComponentActivity() {
@@ -47,7 +49,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun RuntimeRoot(state: AppState = viewModel()) {
+fun RuntimeRoot(
+    state: AppState = viewModel(),
+    mockStore: MockStore = viewModel(),
+) {
     RuntimeTheme(themeOverride = state.themeOverride) {
         var selected by remember { mutableStateOf(Tab.CHAT) }
         Scaffold(
@@ -74,10 +79,11 @@ fun RuntimeRoot(state: AppState = viewModel()) {
                 }
             },
         ) { padding ->
+            val tabModifier = Modifier.fillMaxSize().padding(padding)
             when (selected) {
-                Tab.CHAT    -> ChatScreen(modifier = Modifier.fillMaxSize().padding(padding))
-                Tab.STAGE   -> StageScreen(modifier = Modifier.fillMaxSize().padding(padding))
-                Tab.PROFILE -> ProfileScreen(modifier = Modifier.fillMaxSize().padding(padding), state = state)
+                Tab.CHAT    -> ChatScreen(store = mockStore, modifier = tabModifier)
+                Tab.STAGE   -> StageScreen(modifier = tabModifier)
+                Tab.PROFILE -> ProfileScreen(state = state, modifier = tabModifier)
             }
         }
     }

@@ -1,32 +1,29 @@
 // RuntimeApp — appunvs iOS host shell entry point.
 //
-// The host has three tabs (Chat / Stage / Profile) — the same information
-// architecture as the prior Expo prototype, but rendered with native
-// SwiftUI primitives. The Stage tab is currently a placeholder; a future
-// SubRuntime native module will mount a sandboxed Hermes runtime view
-// here to render AI-authored bundles.
+// Three top-level tabs (Chat / Stage / Profile).  AppState owns
+// host-wide observable state (theme override); MockStore provides
+// in-memory boxes + chat fixtures until the network layer lands.
 //
-// Theme override is held in `AppState` and applied as
+// Theme override is held in AppState and applied as
 // `.preferredColorScheme()` on the root view; absence of an override
-// follows the system setting via `@Environment(\.colorScheme)`.
+// follows the system setting.
 import SwiftUI
 
 @main
 struct RuntimeApp: App {
-    @StateObject private var state = AppState()
+    @StateObject private var appState = AppState()
+    @StateObject private var mockStore = MockStore()
 
     var body: some Scene {
         WindowGroup {
             RootView()
-                .environmentObject(state)
-                .preferredColorScheme(state.preferredColorScheme)
+                .environmentObject(appState)
+                .environmentObject(mockStore)
+                .preferredColorScheme(appState.preferredColorScheme)
         }
     }
 }
 
-/// The three top-level tabs.  Tab order and labels are intentionally
-/// stable across breakpoints and devices — landscape iPad picks up the
-/// same tab bar.
 struct RootView: View {
     @State private var selection: Tab = .chat
 
@@ -57,5 +54,7 @@ struct RootView: View {
 }
 
 #Preview {
-    RootView().environmentObject(AppState())
+    RootView()
+        .environmentObject(AppState())
+        .environmentObject(MockStore())
 }
