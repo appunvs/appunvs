@@ -12,6 +12,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var auth: AuthStore
 
     var body: some View {
         NavigationStack {
@@ -40,15 +41,15 @@ struct ProfileView: View {
                     .fill(Theme.brandPale.color)
                     .frame(width: 56, height: 56)
                     .overlay(
-                        Text("u")
+                        Text(initial)
                             .font(.title2.weight(.bold))
                             .foregroundStyle(Theme.brandDark.color)
                     )
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("未登录用户")
+                    Text(displayName)
                         .font(.headline)
                         .foregroundStyle(Theme.textPrimary.color)
-                    Text("guest@local")
+                    Text(displayEmail)
                         .font(.subheadline)
                         .foregroundStyle(Theme.textSecondary.color)
                 }
@@ -56,6 +57,19 @@ struct ProfileView: View {
                 Badge("Free", tone: .info)
             }
         }
+    }
+
+    private var displayEmail: String { auth.me?.email ?? "—" }
+
+    private var displayName: String {
+        if let email = auth.me?.email, let at = email.firstIndex(of: "@") {
+            return String(email[..<at])
+        }
+        return "已登录"
+    }
+
+    private var initial: String {
+        String(displayName.prefix(1)).uppercased()
     }
 
     private var usageCard: some View {
@@ -95,19 +109,39 @@ struct ProfileView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(Spacing.l)
                 Divider().background(Theme.borderDefault.color)
-                HStack(spacing: Spacing.m) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("当前设备")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(Theme.textPrimary.color)
-                        Text("此刻活跃")
-                            .font(.caption)
-                            .foregroundStyle(Theme.textSecondary.color)
+                if let devices = auth.me?.devices, !devices.isEmpty {
+                    ForEach(devices) { dev in
+                        HStack(spacing: Spacing.m) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(dev.platform)
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(Theme.textPrimary.color)
+                                Text(dev.id)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(Theme.textSecondary.color)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer()
+                        }
+                        .padding(Spacing.l)
+                        Divider().background(Theme.borderDefault.color)
                     }
-                    Spacer()
-                    Badge("本机", tone: .info)
+                } else {
+                    HStack(spacing: Spacing.m) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("当前设备")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(Theme.textPrimary.color)
+                            Text("此刻活跃")
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary.color)
+                        }
+                        Spacer()
+                        Badge("本机", tone: .info)
+                    }
+                    .padding(Spacing.l)
                 }
-                .padding(Spacing.l)
             }
         }
     }
@@ -115,10 +149,10 @@ struct ProfileView: View {
     private var footer: some View {
         VStack(spacing: Spacing.s) {
             Button("退出登录") {
-                // network/auth wiring lands in a follow-up PR
+                auth.signOut()
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Theme.textSecondary.color)
+            .foregroundStyle(Theme.semanticDanger.color)
             Text("appunvs · v0.0.1 (dev)")
                 .font(.caption)
                 .foregroundStyle(Theme.textSecondary.color)
@@ -169,4 +203,5 @@ private struct QuotaRow: View {
 #Preview {
     ProfileView()
         .environmentObject(AppState())
+        .environmentObject(AuthStore())
 }

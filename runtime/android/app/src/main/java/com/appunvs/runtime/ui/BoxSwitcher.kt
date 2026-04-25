@@ -40,9 +40,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
-import com.appunvs.runtime.state.Box
-import com.appunvs.runtime.state.BoxState
-import com.appunvs.runtime.state.MockStore
+import com.appunvs.runtime.net.BoxWire
+import com.appunvs.runtime.state.BoxRepo
 import com.appunvs.runtime.theme.LocalAppColors
 import com.appunvs.runtime.theme.Radius
 import com.appunvs.runtime.theme.Spacing
@@ -50,7 +49,7 @@ import com.appunvs.runtime.theme.Spacing
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoxSwitcher(
-    store: MockStore,
+    repo: BoxRepo,
     onNewBox: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -67,7 +66,7 @@ fun BoxSwitcher(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = store.activeBox?.title ?: "选择 Box",
+            text = repo.activeBox?.title ?: "选择 Box",
             style = MaterialTheme.typography.bodyLarge.copy(
                 color = colors.textPrimary,
                 fontWeight = FontWeight.SemiBold,
@@ -98,19 +97,29 @@ fun BoxSwitcher(
                     modifier = Modifier.padding(horizontal = Spacing.l.dp, vertical = Spacing.s.dp),
                 )
 
-                store.boxes.forEach { box ->
-                    BoxRow(
-                        box = box,
-                        isActive = box.id == store.activeBox?.id,
-                        onTap = {
-                            store.setActive(box)
-                            scope.launch {
-                                sheetState.hide()
-                                sheetOpen = false
-                            }
-                        },
+                if (repo.boxes.isEmpty()) {
+                    Text(
+                        text = if (repo.loading) "加载中…" else "还没有 Box, 点下方新建一个",
+                        style = MaterialTheme.typography.bodyMedium.copy(color = colors.textSecondary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(Spacing.xxl.dp),
                     )
-                    Divider(color = colors.borderDefault)
+                } else {
+                    repo.boxes.forEach { box ->
+                        BoxRow(
+                            box = box,
+                            isActive = box.boxID == repo.activeBox?.boxID,
+                            onTap = {
+                                repo.setActive(box)
+                                scope.launch {
+                                    sheetState.hide()
+                                    sheetOpen = false
+                                }
+                            },
+                        )
+                        Divider(color = colors.borderDefault)
+                    }
                 }
 
                 Row(
@@ -170,7 +179,7 @@ fun BoxSwitcher(
 
 @Composable
 private fun BoxRow(
-    box: Box,
+    box: BoxWire,
     isActive: Boolean,
     onTap: () -> Unit,
 ) {
@@ -197,7 +206,7 @@ private fun BoxRow(
                 style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary),
             )
         }
-        AppBadge(box.state.label, tone = box.state.tone)
+        AppBadge(box.state, tone = box.state.tone())
         if (isActive) {
             Spacer(Modifier.width(Spacing.s.dp))
             Icon(
@@ -209,19 +218,12 @@ private fun BoxRow(
     }
 }
 
-private val BoxState.label: String
-    get() = when (this) {
-        BoxState.DRAFT     -> "draft"
-        BoxState.PUBLISHED -> "published"
-        BoxState.ARCHIVED  -> "archived"
-    }
-
-private val BoxState.tone: BadgeTone
-    get() = when (this) {
-        BoxState.DRAFT     -> BadgeTone.WARNING
-        BoxState.PUBLISHED -> BadgeTone.SUCCESS
-        BoxState.ARCHIVED  -> BadgeTone.NEUTRAL
-    }
+private fun String.tone(): BadgeTone = when (this) {
+    "draft"     -> BadgeTone.WARNING
+    "published" -> BadgeTone.SUCCESS
+    "archived"  -> BadgeTone.NEUTRAL
+    else        -> BadgeTone.NEUTRAL
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -1,10 +1,10 @@
 // ProfileScreen — account center.  Sections:
 //
-//   1. Account header (placeholder identity)
-//   2. Today's usage (mock numbers)
+//   1. Account header (real email from /auth/me when available)
+//   2. Today's usage (mock numbers — billing surface lands later)
 //   3. Theme override (functional, persisted via DataStore)
-//   4. Devices (placeholder)
-//   5. Footer (sign-out placeholder + version)
+//   4. Devices (real list from /auth/me)
+//   5. Footer (sign-out + version)
 //
 // Box list lives in the Chat tab's BoxSwitcher chip — not here.
 package com.appunvs.runtime.screens
@@ -34,10 +34,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 import com.appunvs.runtime.state.AppState
+import com.appunvs.runtime.state.AuthRepo
 import com.appunvs.runtime.theme.LocalAppColors
 import com.appunvs.runtime.theme.Spacing
 import com.appunvs.runtime.ui.AppBadge
@@ -48,6 +51,7 @@ import com.appunvs.runtime.ui.QuotaBar
 @Composable
 fun ProfileScreen(
     state: AppState,
+    auth: AuthRepo,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalAppColors.current
@@ -67,17 +71,20 @@ fun ProfileScreen(
             ),
         )
 
-        AccountCard()
+        AccountCard(auth = auth)
         UsageCard()
         ThemeCard(state = state)
-        DevicesCard()
-        Footer()
+        DevicesCard(auth = auth)
+        Footer(auth = auth)
     }
 }
 
 @Composable
-private fun AccountCard() {
+private fun AccountCard(auth: AuthRepo) {
     val colors = LocalAppColors.current
+    val email = auth.me?.email ?: "—"
+    val name = email.substringBefore('@', missingDelimiterValue = "已登录")
+    val initial = name.take(1).uppercase()
     AppCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -88,7 +95,7 @@ private fun AccountCard() {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "u",
+                    text = initial,
                     style = MaterialTheme.typography.titleLarge.copy(
                         color = colors.brandDark,
                         fontWeight = FontWeight.Bold,
@@ -98,11 +105,11 @@ private fun AccountCard() {
             Spacer(Modifier.width(Spacing.l.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "未登录用户",
+                    text = name,
                     style = MaterialTheme.typography.titleMedium.copy(color = colors.textPrimary),
                 )
                 Text(
-                    text = "guest@local",
+                    text = email,
                     style = MaterialTheme.typography.bodyMedium.copy(color = colors.textSecondary),
                 )
             }
@@ -161,8 +168,9 @@ private fun ThemeCard(state: AppState) {
 }
 
 @Composable
-private fun DevicesCard() {
+private fun DevicesCard(auth: AuthRepo) {
     val colors = LocalAppColors.current
+    val devices = auth.me?.devices.orEmpty()
     AppCard(modifier = Modifier.fillMaxWidth(), padding = 0) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
@@ -174,40 +182,71 @@ private fun DevicesCard() {
                 modifier = Modifier.padding(Spacing.l.dp),
             )
             Divider(color = colors.borderDefault)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(Spacing.l.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "当前设备",
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            color = colors.textPrimary,
-                            fontWeight = FontWeight.SemiBold,
-                        ),
-                    )
-                    Text(
-                        text = "此刻活跃",
-                        style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary),
-                    )
+            if (devices.isEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(Spacing.l.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "当前设备",
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                color = colors.textPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                        )
+                        Text(
+                            text = "此刻活跃",
+                            style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary),
+                        )
+                    }
+                    AppBadge("本机", tone = BadgeTone.INFO)
                 }
-                AppBadge("本机", tone = BadgeTone.INFO)
+            } else {
+                devices.forEach { dev ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(Spacing.l.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = dev.platform,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    color = colors.textPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                ),
+                            )
+                            Text(
+                                text = dev.id,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = colors.textSecondary,
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    Divider(color = colors.borderDefault)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun Footer() {
+private fun Footer(auth: AuthRepo) {
     val colors = LocalAppColors.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth().padding(top = Spacing.l.dp),
     ) {
-        TextButton(onClick = { /* network/auth wiring lands later */ }) {
-            Text(text = "退出登录", color = colors.textSecondary)
+        TextButton(onClick = { auth.signOut() }) {
+            Text(text = "退出登录", color = colors.semanticDanger)
         }
         Text(
             text = "appunvs · v0.0.1 (dev)",

@@ -38,6 +38,11 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         UIUserInterfaceStyle: ~  # respect system setting; user override applied at app level
+        # Dev-only ATS opening: allow http://localhost:8080 calls from
+        # the simulator to the local relay.  Tightens to https-only in
+        # production builds (handled by a Release-only override later).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1,2"  # iPhone + iPad
