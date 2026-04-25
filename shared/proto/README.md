@@ -1,10 +1,9 @@
 # shared/proto
 
 **Single source of truth** for the wire types shared by every appunvs
-component (`relay/` today; `runtime/ios` and `runtime/android` once
-the native shell lands).  Hand-written mirrors live alongside the
-generated output for languages that prefer them; drift tests guard
-against divergence.
+component (`relay/` and the host shells under `appunvs/{ios,android}/`).
+Hand-written mirrors live alongside the generated output for languages
+that prefer them; drift tests guard against divergence.
 
 ## Layout
 
@@ -75,8 +74,8 @@ Future:
 
 | Component | Plugin | Output |
 | --- | --- | --- |
-| runtime/ios     | `swift-protobuf` | `runtime/ios/Generated/` |
-| runtime/android | `protoc-gen-kotlin` | `runtime/android/app/src/main/java/com/appunvs/proto/` |
+| appunvs/ios     | `swift-protobuf` | `appunvs/ios/Runtime/Generated/` |
+| appunvs/android | `protoc-gen-kotlin` | `appunvs/android/app/src/main/java/com/appunvs/proto/` |
 
 Run `./gen.sh` from this directory after any proto change, then
 commit the generated output alongside the proto edit.

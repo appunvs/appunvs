@@ -1,102 +1,126 @@
-# runtime
+# runtime — appunvs runtime SDK
 
-The appunvs **native shell** — two platform-native iOS + Android apps that
-host the user-facing UI and embed a sandboxed Hermes runtime to load
-AI-generated bundles.
+This is the **JS/Hermes side** of appunvs: a React Native 0.85 project
+that builds into a single artifact per platform
+(`RuntimeSDK.xcframework` and `runtime.aar`) which the host shell links.
+**The shipped app under `appunvs/` does not contain RN by itself** —
+it links this SDK and uses it to mount AI-generated bundles inside the
+Stage tab.
 
-This directory is the **host application** itself, not a separate library.
-All UI (Chat / Stage / Profile) lives in native code: SwiftUI on iOS,
-Jetpack Compose on Android. The previous Expo + react-native-web
-prototype (`app/`) is gone — each platform has its own native UI codebase
-with its own design system implementation against shared tokens.
+A separate, smaller pipeline in `sandbox/` is what the **relay** uses
+to compile AI-generated source into a bundle the SDK can load.
 
 ## Layout
 
 ```
 runtime/
-├── README.md            ← this file
-├── MODULES.md           ← native module allowlist for AI bundles
-├── version.json         ← runtime SDK version
-├── ios/                 ← Swift + SwiftUI Xcode project
-│   ├── project.yml      ← XcodeGen spec; xcodeproj is generated
-│   ├── Runtime/         ← Swift source tree
+├── ios/                  ← RN init's iOS subdir; produces the framework
+├── android/              ← RN init's Android subdir; produces the AAR
+├── package.json          ← RN 0.85 + curated Tier 1 modules
+├── babel.config.js       ← stock RN preset
+├── metro.config.js       ← stock metro (dev / harness only)
+├── app.json
+├── tsconfig.json
+├── index.js              ← RN entry; loads src/
+│
+├── src/
+│   ├── index.tsx         ← host JS entry — placeholder UI shown when no
+│   │                       AI bundle is loaded
+│   ├── HostBridge.ts     ← TypeScript declarations for the JSI surface
+│   │                       the host injects into every SubRuntime
+│   └── TestHarness.tsx   ← dev-only screen for ad-hoc bundle loading
+│
+├── packaging/            ← SDK build pipeline
+│   ├── build-ios.sh      → RuntimeSDK.xcframework
+│   ├── build-android.sh  → runtime.aar
 │   └── README.md
-└── android/             ← Kotlin + Compose Gradle project
-    ├── settings.gradle.kts
-    ├── build.gradle.kts
-    ├── app/             ← module
-    └── README.md
+│
+├── sandbox/              ← relay-side bundle build pipeline
+│   ├── Dockerfile        ← image with allowlisted deps installed
+│   ├── metro.config.js   ← rejects imports outside the allowlist
+│   └── build-bundle.sh   ← AI source in → index.bundle out
+│
+├── version.json          ← runtime SDK version + ABI
+├── MODULES.md            ← Tier 1 / 2 / 3 module allowlist
+├── ARCHITECTURE.md       ← three-paths comparison + outputs ↔ consumers
+├── README.md             ← this file
+└── LICENSE
 ```
 
-When the **SubRuntime** native module lands (PR D), each platform gets a
-`modules/SubRuntime/` subdirectory containing the native bridge that
-spawns a second `jsi::Runtime` (Hermes) per Stage. The host UI itself
-stays pure native; only the Stage tab content runs JS.
+## How the three pieces relate
 
-## Why native, not RN
-
-- Best perf, no RN bridge tax for the host UI
-- Native look-and-feel (SF Symbols, Dynamic Type, system gestures, system fonts)
-- Smaller binary, native debugging, native crash reporting
-- The RN runtime exists only inside SubRuntimes for AI bundles, not for the
-  host
-
-The cost is two UI codebases instead of one — accepted.
-
-## Phases (see PR sequence in main README)
-
-| # | Phase | Status |
-| --- | --- | --- |
-| 0 | Scaffold (this PR) — empty SwiftUI/Compose 3-tab apps, design tokens, CI hookup | ✅ |
-| 1 | Port UI: BoxSwitcher / Bubble / ToolCall / EmptyState / QuotaBar plus Chat / Stage / Profile screens, both platforms | 🔜 |
-| 2 | Network + state: HTTP client to relay, AsyncStorage equivalent, Box list cache | 🔜 |
-| 3 | SubRuntime native module: spawn/load/destroy second Hermes runtime, Fabric surface mount | 🔜 |
-| 4 | HostBridge: white-listed natives exposed to AI bundles | 🔜 |
+```
+┌─ runtime/            (this directory)
+│  │
+│  ├─ packaging/  ─→  RuntimeSDK.xcframework + runtime.aar
+│  │                        │
+│  │                        └─→ linked by appunvs/{ios,android}
+│  │                              │
+│  │                              └─→ host's Stage tab mounts a
+│  │                                    SubRuntime view backed by
+│  │                                    one Hermes per Box
+│  │
+│  └─ sandbox/    ─→  docker image
+│                          │
+│                          └─→ used by relay/internal/sandbox
+│                                to compile AI source → index.bundle
+│                                  │
+│                                  └─→ served via /_artifacts
+│                                       and pulled by SubRuntime
+│                                       at Stage-tab load time
+```
 
 ## Local development
 
-### iOS
-
-Prerequisites: macOS 14+, Xcode 16+, [XcodeGen](https://github.com/yonaskolb/XcodeGen)
-(`brew install xcodegen`).
+### Run the runtime by itself (dev harness)
 
 ```bash
-cd runtime/ios
-xcodegen generate                         # produces Runtime.xcodeproj
-open Runtime.xcodeproj                     # or: xcodebuild -scheme Runtime
+cd runtime
+npm install                              # one-time
+npm run ios       # or: npm run android
 ```
 
-The Xcode project file is **not** committed; regenerate from
-`project.yml` whenever scheme / settings change.
+You'll see `TestHarness.tsx` — a dev screen with a textbox to paste a
+bundle URL.  PR D2 wires the actual SubRuntime mount; today the harness
+is UI-only.
 
-### Android
-
-Prerequisites: JDK 17+, Android Studio Hedgehog or later, Android SDK 35.
+### Build the SDK artifact (PR D2)
 
 ```bash
-cd runtime/android
-gradle wrapper --gradle-version 8.10       # one-time, on a machine with gradle installed
-./gradlew assembleDebug                    # or open in Android Studio
+./packaging/build-ios.sh        → build/ios/RuntimeSDK.xcframework
+./packaging/build-android.sh    → build/android/runtime.aar
 ```
 
-Gradle wrapper jar is **not** committed; the bootstrap above is a one-time
-ritual per clone (no need to re-run unless gradle version changes).
+Both stub today.
 
-## Build outputs
+### Build the sandbox image (PR D2)
 
-| Output | Produced by | Consumed by |
-| --- | --- | --- |
-| iOS app `.ipa` | `xcodebuild -archivePath ...` then `xcodebuild -exportArchive` | App Store / TestFlight |
-| Android app `.aab` | `./gradlew bundleRelease` | Google Play |
-| (later) `RuntimeSDK.xcframework` | `packaging/build-ios.sh` | Third-party hosts that want to embed our runtime |
-| (later) `runtime.aar` | `packaging/build-android.sh` | Third-party hosts on Android |
+```bash
+docker build -t appunvs/sandbox sandbox/
+docker run --rm -v "$(pwd)/example-ai-source:/work" appunvs/sandbox
+# → /work/index.bundle
+```
 
-The third-party SDK outputs are deferred until the host product is
-shipping — single producer (us), single consumer (us), no need for the
-ABI compatibility ceremony yet.
+## Versioning
+
+`version.json`'s `runtime` is the SDK release version.  `sdk_version` is
+the integer ABI version — bump it when:
+
+- a curated module is added or removed (`MODULES.md` change)
+- the host bridge surface (`src/HostBridge.ts`) gains, loses, or
+  reshapes a method
+- the SubRuntime's bundle-load contract changes
+
+The host shell pins to a specific `sdk_version` range; AI bundles record
+which `sdk_version` they were built against so the host can reject
+incompatible bundles.
+
+## Why a monorepo
+
+The runtime SDK + the host shells + the relay all change together at
+this stage.  When the SDK gets external consumers we'll split it to
+`appunvs/runtime` as its own repo with semver releases.
 
 ## License
 
-MIT (matches main repo). Runtime stays in the monorepo until it has
-external consumers; at that point we'll split to `appunvs/runtime` and
-re-license the SDK side independently.
+MIT (matches main repo).

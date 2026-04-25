@@ -1,7 +1,7 @@
 {
-  "runtime": "0.0.1",
+  "runtime": "0.1.0",
   "sdk_version": 1,
-  "react_native": "0.85.0",
+  "react_native": "0.85.2",
   "min_ios": "16.0",
   "min_android_sdk": 24,
   "target_android_sdk": 35
