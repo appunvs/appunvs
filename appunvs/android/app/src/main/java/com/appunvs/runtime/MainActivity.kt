@@ -127,7 +127,7 @@ private fun SignedInRoot(
         val tabModifier = Modifier.fillMaxSize().padding(padding)
         when (selected) {
             Tab.CHAT    -> ChatScreen(boxRepo = boxRepo, chat = chat, modifier = tabModifier)
-            Tab.STAGE   -> StageScreen(modifier = tabModifier)
+            Tab.STAGE   -> StageScreen(boxRepo = boxRepo, modifier = tabModifier)
             Tab.PROFILE -> ProfileScreen(state = state, auth = auth, modifier = tabModifier)
         }
     }
