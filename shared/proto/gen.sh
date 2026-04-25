@@ -29,14 +29,17 @@ protoc \
   --go_opt=paths=source_relative \
   "${PROTOS[@]}"
 
-# Future targets — uncomment when the runtime workspace ships:
+# Future targets — uncomment when the host shells consume generated
+# bindings instead of the hand-written Codable / kotlinx-serialization
+# mirrors they ship today (appunvs/ios/Runtime/Net/Models.swift,
+# appunvs/android/app/src/main/java/com/appunvs/runtime/net/Models.kt):
 #
-# echo "==> Swift (runtime/ios)"
-# mkdir -p "$ROOT/runtime/ios/Generated"
-# protoc --proto_path="$HERE" --swift_out="$ROOT/runtime/ios/Generated" "${PROTOS[@]}"
+# echo "==> Swift (appunvs/ios)"
+# mkdir -p "$ROOT/appunvs/ios/Runtime/Generated"
+# protoc --proto_path="$HERE" --swift_out="$ROOT/appunvs/ios/Runtime/Generated" "${PROTOS[@]}"
 #
-# echo "==> Kotlin (runtime/android)"
-# mkdir -p "$ROOT/runtime/android/app/src/main/java/com/appunvs/proto"
-# protoc --proto_path="$HERE" --kotlin_out="$ROOT/runtime/android/app/src/main/java/com/appunvs/proto" "${PROTOS[@]}"
+# echo "==> Kotlin (appunvs/android)"
+# mkdir -p "$ROOT/appunvs/android/app/src/main/java/com/appunvs/proto"
+# protoc --proto_path="$HERE" --kotlin_out="$ROOT/appunvs/android/app/src/main/java/com/appunvs/proto" "${PROTOS[@]}"
 
 echo "done."
