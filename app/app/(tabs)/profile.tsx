@@ -1,136 +1,180 @@
-import { useEffect, useState } from 'react';
-import {
-  View, Text, FlatList, Pressable, StyleSheet, ActivityIndicator, TextInput, Alert,
-} from 'react-native';
+// Profile tab — account center.  No Box list here (that lives in the
+// Chat header switcher).  Layout sections, top to bottom:
+//
+//   1. Account header (avatar / name / plan summary)
+//   2. Usage quota bars (today's chat count + storage)
+//   3. Settings (theme override; future: language)
+//   4. Devices (logged-in surfaces; future: register-new flow)
+//   5. Footer actions (sign out, manage subscription, version)
+//
+// All sections live inside Cards so the page reads as discrete blocks
+// rather than a long edge-to-edge list.
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 
-import { useActiveBoxStore } from '@/state/box';
-import { listBoxes, createBox, publishBox, issuePair } from '@/lib/box';
-import type { Box } from '@/lib/box';
+import { useTheme } from '@/theme';
+import { useThemeOverrideStore, type ThemeOverride } from '@/theme';
+import { Badge, Button, Card, Divider, Text } from '@/ui';
+import { QuotaBar } from '@/components';
 
-// Profile tab — account/device settings + a list of the user's Boxes.
-// Tapping a row makes that Box the "active" one for Chat + Stage.  A
-// long-press opens the publish / pair sheet (placeholder Alert for now).
-export default function ProfileScreen() {
+export default function ProfileTab() {
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const setActive = useActiveBoxStore((s) => s.setActive);
-  const active = useActiveBoxStore((s) => s.box);
-  const [boxes, setBoxes] = useState<Box[] | null>(null);
-  const [draftTitle, setDraftTitle] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const refresh = async () => {
-    setBusy(true);
-    try {
-      const res = await listBoxes();
-      setBoxes(res.boxes ?? []);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  useEffect(() => {
-    refresh();
-  }, []);
-
-  const onCreate = async () => {
-    const title = draftTitle.trim();
-    if (!title) return;
-    setBusy(true);
-    try {
-      const r = await createBox({ title });
-      setDraftTitle('');
-      await refresh();
-      setActive(r);
-      router.push('/(tabs)/chat');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onPublish = async (b: Box) => {
-    setBusy(true);
-    try {
-      const r = await publishBox(b.box_id);
-      Alert.alert('Published', `${b.title} → v${r.current?.version ?? '?'}`);
-      await refresh();
-    } catch (e) {
-      Alert.alert('Publish failed', String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onPair = async (b: Box) => {
-    try {
-      const r = await issuePair({ box_id: b.box_id, ttl_sec: 300 });
-      Alert.alert('Pairing code', `${r.short_code}\nexpires in 5 min`);
-    } catch (e) {
-      Alert.alert('Pair failed', String(e));
-    }
-  };
+  const themeOverride = useThemeOverrideStore((s) => s.override);
+  const setOverride = useThemeOverrideStore((s) => s.set);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      <Text style={styles.h1}>Boxes</Text>
-      <View style={styles.createRow}>
-        <TextInput
-          style={styles.input}
-          placeholder="new box title"
-          placeholderTextColor="#888"
-          value={draftTitle}
-          onChangeText={setDraftTitle}
-        />
-        <Pressable style={styles.create} onPress={onCreate} disabled={busy}>
-          <Text style={styles.createText}>Create</Text>
-        </Pressable>
-      </View>
-      {busy && <ActivityIndicator style={{ marginVertical: 8 }} />}
-      <FlatList
-        data={boxes ?? []}
-        keyExtractor={(b) => b.box_id}
-        contentContainerStyle={{ gap: 8, padding: 12 }}
-        renderItem={({ item }) => (
-          <Pressable
-            style={[styles.row, active?.box_id === item.box_id && styles.rowActive]}
-            onPress={() => setActive({ box: item })}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{item.title}</Text>
-              <Text style={styles.rowMeta}>
-                {item.state} · v{item.current_version || '—'}
-              </Text>
-            </View>
-            <Pressable onPress={() => onPair(item)} style={styles.miniBtn}>
-              <Text style={styles.miniBtnText}>Pair</Text>
-            </Pressable>
-            <Pressable onPress={() => onPublish(item)} style={styles.miniBtn}>
-              <Text style={styles.miniBtnText}>Publish</Text>
-            </Pressable>
-          </Pressable>
-        )}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No boxes yet — create one above.</Text>
-        }
+    <ScrollView
+      style={{ flex: 1, backgroundColor: theme.colors.bgPage }}
+      contentContainerStyle={{
+        padding: theme.spacing.l,
+        paddingTop: insets.top + theme.spacing.l,
+        paddingBottom: insets.bottom + theme.spacing.xxl,
+        gap: theme.spacing.l,
+      }}
+    >
+      <Text variant="h1">个人中心</Text>
+
+      <AccountCard />
+
+      <UsageCard />
+
+      <SettingsCard
+        themeOverride={themeOverride}
+        onThemeChange={(v) => void setOverride(v)}
       />
+
+      <DevicesCard />
+
+      <FooterCard />
+    </ScrollView>
+  );
+}
+
+function AccountCard() {
+  const theme = useTheme();
+  return (
+    <Card>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.l }}>
+        <View
+          style={{
+            width: 56, height: 56,
+            borderRadius: 28,
+            backgroundColor: theme.colors.brandPale,
+            alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <Text variant="h2" color="brandDark">u</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text variant="h3" numberOfLines={1}>未登录用户</Text>
+          <Text color="textSecondary" numberOfLines={1}>guest@local</Text>
+        </View>
+        <Badge label="Free" tone="info" />
+      </View>
+      <View style={{ marginTop: theme.spacing.l, flexDirection: 'row', gap: theme.spacing.s }}>
+        <Button label="登录 / 注册" variant="primary" size="sm" />
+        <Button label="升级到 Pro" variant="secondary" size="sm" />
+      </View>
+    </Card>
+  );
+}
+
+function UsageCard() {
+  const theme = useTheme();
+  // V1 placeholder values; the next slice wires these to GET /billing/status.
+  return (
+    <Card>
+      <Text variant="h3" style={{ marginBottom: theme.spacing.m }}>本月用量</Text>
+      <View style={{ gap: theme.spacing.m }}>
+        <QuotaBar label="对话" used={0} cap={300} />
+        <QuotaBar label="存储" used={0} cap={5_120} unit="MB" />
+      </View>
+    </Card>
+  );
+}
+
+function SettingsCard({
+  themeOverride,
+  onThemeChange,
+}: {
+  themeOverride: ThemeOverride;
+  onThemeChange: (next: ThemeOverride) => void;
+}) {
+  const theme = useTheme();
+  type Choice = { id: ThemeOverride; label: string };
+  const choices: Choice[] = [
+    { id: null,    label: '跟随系统' },
+    { id: 'light', label: '浅色' },
+    { id: 'dark',  label: '深色' },
+  ];
+  return (
+    <Card>
+      <Text variant="h3">设置</Text>
+      <Text variant="captionStrong" color="textSecondary" style={{ marginTop: theme.spacing.l }}>
+        主题
+      </Text>
+      <View style={{ flexDirection: 'row', gap: theme.spacing.s, marginTop: theme.spacing.s }}>
+        {choices.map((c) => (
+          <Button
+            key={c.id ?? 'system'}
+            label={c.label}
+            variant={c.id === themeOverride ? 'primary' : 'secondary'}
+            size="sm"
+            onPress={() => onThemeChange(c.id)}
+          />
+        ))}
+      </View>
+    </Card>
+  );
+}
+
+function DevicesCard() {
+  const theme = useTheme();
+  return (
+    <Card padding="none">
+      <View style={{ padding: theme.spacing.l }}>
+        <Text variant="h3">设备</Text>
+      </View>
+      <Divider />
+      <DeviceRow name="当前设备" hint="此刻活跃" current />
+      <Divider />
+      <View style={{ padding: theme.spacing.l }}>
+        <Button label="注册新设备" variant="secondary" size="sm" />
+      </View>
+    </Card>
+  );
+}
+
+function DeviceRow({
+  name, hint, current,
+}: { name: string; hint: string; current?: boolean }) {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        paddingHorizontal: theme.spacing.l,
+        paddingVertical: theme.spacing.m,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: theme.spacing.m,
+      }}
+    >
+      <View style={{ flex: 1 }}>
+        <Text variant="bodyStrong">{name}</Text>
+        <Text variant="caption" color="textSecondary">{hint}</Text>
+      </View>
+      {current ? <Badge label="本机" tone="info" /> : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  root:        { flex: 1, backgroundColor: '#0b0d10' },
-  h1:          { color: '#f4f5f7', fontSize: 22, fontWeight: '700', padding: 16 },
-  createRow:   { flexDirection: 'row', paddingHorizontal: 12, gap: 8 },
-  input:       { flex: 1, color: '#f4f5f7', backgroundColor: '#161a20', padding: 10, borderRadius: 8 },
-  create:      { backgroundColor: '#2e6cdf', paddingHorizontal: 16, justifyContent: 'center', borderRadius: 8 },
-  createText:  { color: '#fff', fontWeight: '600' },
-  row:         { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, backgroundColor: '#161a20' },
-  rowActive:   { borderColor: '#2e6cdf', borderWidth: 1 },
-  rowTitle:    { color: '#f4f5f7', fontSize: 16, fontWeight: '600' },
-  rowMeta:     { color: '#9aa3ad', fontSize: 12, marginTop: 2 },
-  miniBtn:     { backgroundColor: '#222831', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
-  miniBtnText: { color: '#9aa3ad', fontSize: 12, fontWeight: '600' },
-  empty:       { color: '#9aa3ad', textAlign: 'center', padding: 24 },
-});
+function FooterCard() {
+  const theme = useTheme();
+  return (
+    <View style={{ alignItems: 'center', gap: theme.spacing.s, marginTop: theme.spacing.l }}>
+      <Button label="退出登录" variant="ghost" size="sm" />
+      <Text variant="caption" color="textSecondary">appunvs · v0.1 (dev)</Text>
+    </View>
+  );
+}

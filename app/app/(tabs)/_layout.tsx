@@ -1,25 +1,43 @@
 import { Tabs } from 'expo-router';
 import { useWindowDimensions, Platform } from 'react-native';
 
-// Single tabs layout with side-bar on browser/desktop and bottom-bar on
-// mobile.  The breakpoint is 720dp — narrower than that we treat the
-// surface as "phone" regardless of native platform, which keeps responsive
-// browser windows behaving like the mobile shell.
+import { useTheme } from '@/theme';
+
+// Single tabs layout.  Three tabs stay constant across breakpoints so a
+// resize never makes a tab disappear.  Layout style switches:
+//
+//   < 720dp  bottom tabbar, every tab full-screen
+//   ≥ 720dp  side tabbar; Chat tab internally renders a Stage panel
+//            on the right, Stage tab stays full-bleed (focus mode)
 //
 // react-navigation's bottom-tab navigator (which expo-router defaults to)
-// supports `tabBarPosition: 'left'` since v7.  We rely on that here so we
-// don't have to hand-roll a second navigator.
+// supports `tabBarPosition: 'left'` since v7.
 export default function TabsLayout() {
   const { width } = useWindowDimensions();
-  const sideTabs = (Platform.OS === 'web' || Platform.OS === 'macos' || Platform.OS === 'windows') && width >= 720;
+  const theme = useTheme();
+  const sideTabs =
+    (Platform.OS === 'web' || Platform.OS === 'macos' || Platform.OS === 'windows') &&
+    width >= 720;
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        // @ts-expect-error tabBarPosition exists in v7; types may lag in the SDK ship.
+        tabBarStyle: {
+          backgroundColor: theme.colors.bgCard,
+          borderTopColor: theme.colors.borderDefault,
+          borderRightColor: theme.colors.borderDefault,
+          ...(sideTabs ? { width: 220 } : { height: 60 }),
+        },
+        tabBarActiveTintColor: theme.colors.brandDark,
+        tabBarInactiveTintColor: theme.colors.textSecondary,
+        tabBarLabelStyle: {
+          fontSize: 13,
+          fontWeight: '600',
+        },
+        // @ts-expect-error tabBarPosition exists in react-navigation v7;
+        // types may lag depending on SDK pin.
         tabBarPosition: sideTabs ? 'left' : 'bottom',
-        tabBarStyle: sideTabs ? { width: 200 } : undefined,
       }}
     >
       <Tabs.Screen name="chat"    options={{ title: 'Chat' }} />
