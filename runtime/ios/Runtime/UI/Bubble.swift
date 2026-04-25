@@ -1,7 +1,8 @@
 // Bubble — chat message.  User messages right-align with brand fill;
-// assistant / system messages left-align with bordered surface.  Max
-// width caps at 85% of the parent so two long bubbles can sit side by
-// side on the iPad split view.
+// assistant / system messages left-align with bordered surface.  Soft
+// corner radius for both; the per-corner "tail" trim used in the prior
+// RN port wants `UnevenRoundedRectangle` which is iOS 16.4 only — we
+// target iOS 16.0, so a uniform RoundedRectangle is the compromise.
 import SwiftUI
 
 enum BubbleRole {
@@ -28,20 +29,14 @@ struct Bubble: View {
                 .padding(.horizontal, Spacing.l)
                 .padding(.vertical, Spacing.m)
                 .background(
-                    UnevenRoundedRectangle(
-                        cornerRadii: corners,
-                        style: .continuous
-                    )
-                    .fill(background)
+                    RoundedRectangle(cornerRadius: Radius.xl, style: .continuous)
+                        .fill(background)
                 )
                 .overlay(
                     role == .user
                         ? nil
-                        : UnevenRoundedRectangle(
-                            cornerRadii: corners,
-                            style: .continuous
-                        )
-                        .stroke(Theme.borderDefault.color, lineWidth: 1)
+                        : RoundedRectangle(cornerRadius: Radius.xl, style: .continuous)
+                            .stroke(Theme.borderDefault.color, lineWidth: 1)
                 )
                 .frame(maxWidth: .infinity, alignment: role == .user ? .trailing : .leading)
             if role != .user { Spacer(minLength: 0) }
@@ -65,19 +60,6 @@ struct Bubble: View {
         case .user:      return Theme.brandDark.color
         case .assistant: return Theme.bgCard.color
         case .system:    return Theme.bgInput.color
-        }
-    }
-
-    /// User bubbles get a tighter top-right corner (the "tail" side);
-    /// assistant bubbles get a tighter top-left.  The other three
-    /// corners stay at radius.xl for the soft "pillow" feel.
-    private var corners: RectangleCornerRadii {
-        if role == .user {
-            return .init(topLeading: Radius.xl, bottomLeading: Radius.xl,
-                         bottomTrailing: Radius.xl, topTrailing: Radius.s)
-        } else {
-            return .init(topLeading: Radius.s, bottomLeading: Radius.xl,
-                         bottomTrailing: Radius.xl, topTrailing: Radius.xl)
         }
     }
 }

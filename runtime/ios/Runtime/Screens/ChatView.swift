@@ -58,7 +58,9 @@ struct ChatView: View {
                     }
                     .padding(Spacing.l)
                 }
-                .onChange(of: store.messages.count) { _, _ in
+                // 1-arg closure: iOS 16 supports only the (newValue) form.
+                // The 2-arg (oldValue, newValue) variant is iOS 17+.
+                .onChange(of: store.messages.count) { _ in
                     if let last = store.messages.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
