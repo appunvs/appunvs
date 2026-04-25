@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+// Pairing — a one-shot short code binds a connector device to a
+// provider's published Box.  Code lives in Redis with a TTL; the
+// claim swaps it for a bundle URI plus a scoped namespace_token the
+// connector uses on /ws.  See box.proto for BundleRef shape and
+// docs/protocol.md for the full lifecycle.
+package appunvs;
+
+import "common.proto";
+import "box.proto";
+
+option go_package = "github.com/appunvs/appunvs/relay/internal/pb;pb";
+
+// POST /pair  --  provider asks relay to mint a short code bound to a
+// box.  `ttl_sec` must be <= 900 (15 minutes).  Connectors can exchange
+// the code once before it is deleted.
+message PairRequest {
+  string box_id  = 1;
+  int32  ttl_sec = 2;
+}
+
+message PairResponse {
+  string short_code = 1;   // 6–8 alphanumeric chars, user-friendly casing
+  int64  expires_at = 2;
+}
+
+// POST /pair/:code/claim  --  connector redeems the code, receives a
+// bundle URI plus a scoped namespace token it uses to subscribe to box
+// updates.
+message PairClaimRequest {
+  string   device_id = 1;
+  Platform platform  = 2;
+}
+
+message PairClaimResponse {
+  string    box_id          = 1;
+  BundleRef bundle          = 2;
+  string    namespace_token = 3;  // JWT, scope=stage, audience=box_id
+}

@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+// API keys for programmatic access.  Distinct from session and device
+// JWTs — keys are long-lived `apvs_…` strings stored hashed in the
+// relay's SQLite, surfaced once at creation and never echoed again.
+package appunvs;
+
+option go_package = "github.com/appunvs/appunvs/relay/internal/pb;pb";
+
+// POST /keys
+message APIKeyCreateRequest {
+  string name = 1;
+}
+
+// Returned by POST /keys.  `secret` is the only place the full apvs_…
+// string is ever exposed — callers must store it themselves.
+message APIKeyCreateResponse {
+  string id         = 1;
+  string name       = 2;
+  string prefix     = 3;   // "apvs_" + first 8 random chars
+  string secret     = 4;   // full key; shown once
+  int64  created_at = 5;
+}
+
+// One entry in GET /keys.  No `secret`.
+message APIKeySummary {
+  string id           = 1;
+  string name         = 2;
+  string prefix       = 3;
+  int64  created_at   = 4;
+  int64  last_used_at = 5;   // 0 when never used
+  int64  revoked_at   = 6;   // 0 when active
+}
+
+message APIKeyListResponse {
+  repeated APIKeySummary keys = 1;
+}

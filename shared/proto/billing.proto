@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+// Billing surface — Stripe-backed checkout, plan catalog, status
+// readout.  In production paths today only Stripe is wired; the
+// proto shape leaves room for swapping the gateway by changing the
+// relay-side handler without breaking client expectations.
+package appunvs;
+
+option go_package = "github.com/appunvs/appunvs/relay/internal/pb;pb";
+
+// SubscriptionStatus mirrors Stripe's lifecycle states we actually care about.
+enum SubscriptionStatus {
+  SUBSCRIPTION_STATUS_UNSPECIFIED = 0;
+  SUBSCRIPTION_STATUS_ACTIVE      = 1;
+  SUBSCRIPTION_STATUS_PAST_DUE    = 2;
+  SUBSCRIPTION_STATUS_CANCELED    = 3;
+  SUBSCRIPTION_STATUS_TRIALING    = 4;
+}
+
+// Plan is the authoritative shape served by GET /billing/plans.  Clients
+// SHOULD display plan rows with these limits rather than hardcoding them.
+message Plan {
+  string id                   = 1;   // "free" | "pro" | "max"
+  string name                 = 2;   // display name
+  int64  price_cents_monthly  = 3;
+  int64  messages_per_day     = 4;
+  int64  storage_bytes        = 5;
+  int64  max_devices          = 6;
+  int64  max_api_keys         = 7;
+}
+
+message BillingPlansResponse {
+  repeated Plan plans = 1;
+}
+
+// GET /billing/status.  `status` is the Stripe-ish subscription state
+// encoded as a short lowercase string ("active" | "past_due" | "canceled"
+// | "trialing").
+message BillingStatusResponse {
+  string plan          = 1;   // plan id
+  string plan_name     = 2;
+  string status        = 3;
+  int64  period_start  = 4;
+  int64  period_end    = 5;
+  int64  messages_used = 6;
+  int64  storage_bytes = 7;
+  Plan   limits        = 8;
+}
+
+// POST /billing/checkout
+message BillingCheckoutRequest {
+  string plan_id = 1;
+}
+
+message BillingCheckoutResponse {
+  string url  = 1;
+  string mode = 2;  // "live" | "mock"
+}

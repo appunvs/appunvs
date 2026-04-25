@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+// Wire format for the relay's primary data-sync layer: the Message
+// envelope exchanged over /ws plus the handshake parameters.  The
+// data carried inside `payload` is opaque to the relay; only schema
+// validation (see schema.proto) treats it as structured.
+package appunvs;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/appunvs/appunvs/relay/internal/pb;pb";
+
+// Role is the runtime relationship a device has with the relay.
+// BOTH means the device simultaneously acts as provider and connector.
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_PROVIDER    = 1;
+  ROLE_CONNECTOR   = 2;
+  ROLE_BOTH        = 3;
+}
+
+// Op is the kind of mutation carried by a Message payload.
+enum Op {
+  OP_UNSPECIFIED    = 0;
+  OP_UPSERT         = 1;
+  OP_DELETE         = 2;
+  // Schema mutations — sent as server broadcasts on table "_schema".
+  OP_TABLE_CREATE   = 3;
+  OP_TABLE_DELETE   = 4;
+  OP_COLUMN_ADD     = 5;
+  OP_COLUMN_DELETE  = 6;
+  // Billing guardrail — relay echoes this back to the sender when the
+  // current provider message would put the namespace over its per-day quota.
+  OP_QUOTA_EXCEEDED = 7;
+}
+
+// Message is the single envelope exchanged between every client and the
+// relay.  On the wire it is encoded as canonical protojson; see
+// docs/protocol.md.
+//
+// - seq is assigned by the relay via Redis INCR. Clients MUST omit it when sending.
+// - namespace defaults to user_id and determines broadcast fanout.
+// - payload is opaque to the relay; only the table owner interprets it.
+message Message {
+  int64                  seq        = 1;
+  string                 device_id  = 2;
+  string                 user_id    = 3;
+  string                 namespace  = 4;
+  Role                   role       = 5;
+  Op                     op         = 6;
+  string                 table      = 7;
+  google.protobuf.Struct payload    = 8;
+  int64                  ts         = 9;  // sender local ms unix
+}
+
+// WsHandshakeParams documents the query-string of GET /ws.  Not a
+// transported message; declared here so every client generates the
+// same field names.
+message WsHandshakeParams {
+  string token    = 1;  // required
+  int64  last_seq = 2;  // optional; triggers Redis Stream replay
+}

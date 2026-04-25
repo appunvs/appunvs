@@ -59,7 +59,7 @@ appunvs/
 │       ├── ai/           # Anthropic-style agent loop (StubEngine today)
 │       ├── billing/      # Stripe checkout + quota gate
 │       └── pb/           # Go mirrors of shared/proto (drift-tested)
-├── shared/proto/         # canonical wire schema (appunvs.proto)
+├── shared/proto/         # canonical wire schema (per-module: auth/box/pair/sync/ai/…)
 └── docs/                 # ← this doc, protocol.md, conventions.md, auth.md
 ```
 
@@ -177,7 +177,7 @@ Message 协议（seq · upsert · delete）── 原有 relay 通道
 
 ## 共享不变量
 
-1. 所有消息遵循 [docs/protocol.md](protocol.md) 与 `shared/proto/appunvs.proto`
+1. 所有消息遵循 [docs/protocol.md](protocol.md) 与 `shared/proto/*.proto`（按模块拆分）
 2. 术语、状态机、枚举值遵循 [docs/conventions.md](conventions.md)
 3. `seq`、`box_id`、`version`、`short_code` 全部由 relay 生成
 4. relay 不感知用户业务 schema；Message `payload` 对 relay 透明

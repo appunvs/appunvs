@@ -1,61 +1,95 @@
 # shared/proto
 
-**Single source of truth** for the wire types shared by `relay/`, `mobile/`,
-`browser/`, and `desktop/`. All generated code is committed under each
-component to keep builds hermetic; do not import proto files directly.
+**Single source of truth** for the wire types shared by every appunvs
+component (`relay/` today; `runtime/ios` and `runtime/android` once
+the native shell lands).  Hand-written mirrors live alongside the
+generated output for languages that prefer them; drift tests guard
+against divergence.
+
+## Layout
+
+Files are organized by **module**, not by project name — keeps the
+schema reorganizable as the product grows and immune to project
+renames.  Each file declares `package appunvs;` (no version suffix —
+back-incompatible changes will land as a new package, e.g.
+`appunvs2;`, when the time comes).
+
+| File | Purpose |
+| --- | --- |
+| `common.proto`   | Cross-module enums (`Platform`) |
+| `sync.proto`     | Data sync envelope: `Message`, `Role`, `Op`, `WsHandshakeParams` |
+| `auth.proto`     | Account + device identity: signup / login / register / me |
+| `schema.proto`   | User-defined dynamic schema: tables + columns + `ColumnType` |
+| `apikey.proto`   | API key creation, listing, revocation |
+| `billing.proto`  | Stripe-backed plan catalog + status + checkout |
+| `box.proto`      | Stage pipeline: `Box`, `BundleRef`, publish flow, version-update broadcast |
+| `pair.proto`     | One-shot pairing short codes (provider → connector) |
+| `ai.proto`       | AI agent surface: turn request + streamed event frames |
+| `error.proto`    | Generic error envelope for HTTP failures |
+
+Cross-file imports are explicit: `pair.proto` imports `box.proto` for
+`BundleRef`, `auth.proto` imports `common.proto` for `Platform`, etc.
 
 ## Wire format
 
-On the wire we use **canonical protojson** (not binary protobuf). This keeps
-the existing JSON protocol in `docs/protocol.md` working and lets browser
-clients debug via devtools, while still giving every language a typed codec.
+On the wire we use **canonical protojson** (not binary protobuf). This
+keeps the existing JSON protocol in `docs/protocol.md` working and lets
+clients debug via standard JSON tools, while still giving every
+language a typed codec.
 
 If we ever need smaller frames, switch the WebSocket subprotocol from
-`appunvs.json.v1` to `appunvs.proto.v1` and flip the codec; the message shape
-is unchanged.
+`appunvs.json.v1` to `appunvs.proto.v1` and flip the codec; the message
+shape is unchanged.
 
 ## JSON ↔ proto field mapping
 
-protojson uses `lowerCamelCase` by default, but our wire uses `snake_case`.
-Every generated codec must be configured to use **original field names**:
+protojson uses `lowerCamelCase` by default, but our wire uses
+`snake_case`.  Every generated codec must be configured to use
+**original field names**:
 
 - Go (`protojson`): `MarshalOptions{UseProtoNames: true}`
-- TypeScript (`@bufbuild/protobuf`): `toJson({useProtoFieldName: true})`
-- Dart (`protobuf`): `toProto3Json(typeRegistry: ..., fieldNameMode: .original)` via wrapper
-- Rust (`prost` + `pbjson`): enable `preserve_proto_field_names`
+- Swift (`swift-protobuf`): default for JSON output is original; verify
+- Kotlin (`protoc-gen-kotlin`): `JsonFormat.printer().preservingProtoFieldNames()`
 
-Enum values are serialized as their short name lowercased:
-`ROLE_PROVIDER → "provider"`, `OP_UPSERT → "upsert"`, etc. Each generator
-needs a small adapter for this — see each component's `wire/` package.
+Enum values are serialized as their short name lowercased
+(`ROLE_PROVIDER → "provider"`, `OP_UPSERT → "upsert"`, etc.).
 
 ## Regeneration
 
-Prerequisites: `protoc` 25+, `buf` (optional), plus language plugins.
+Prerequisites: `protoc` 25+, plus language plugins.
 
 ```
 shared/proto/
-  appunvs.proto          # edit here
-  buf.yaml               # buf config (optional)
-  gen.sh                 # one script, fan-out to every target
+  *.proto            # edit here
+  buf.yaml           # buf config (lint + breaking-change rules)
+  gen.sh             # one script, fan-out to every active target
 ```
 
-Targets:
+Active targets:
 
 | Component | Plugin | Output |
 | --- | --- | --- |
-| relay     | `protoc-gen-go`                      | `relay/internal/pb/` |
-| browser   | `@bufbuild/protoc-gen-es`            | `browser/src/lib/pb/` |
-| desktop   | `prost-build` via `build.rs`         | `desktop/src-tauri/src/pb/` |
-| mobile    | `protoc-gen-dart`                    | `mobile/lib/pb/` |
+| relay | hand-mirrored (no codegen) | `relay/internal/pb/` |
 
-Run `./gen.sh` from this directory after any proto change, then commit the
-generated output alongside the proto edit.
+Future:
+
+| Component | Plugin | Output |
+| --- | --- | --- |
+| runtime/ios     | `swift-protobuf` | `runtime/ios/Generated/` |
+| runtime/android | `protoc-gen-kotlin` | `runtime/android/app/src/main/java/com/appunvs/proto/` |
+
+Run `./gen.sh` from this directory after any proto change, then
+commit the generated output alongside the proto edit.
 
 ## Rules
 
-1. Never hand-write wire types in any component — always import from `pb/`.
-2. Adding a field is backwards compatible; renumbering or removing is not.
-   Bump the proto package (`appunvs.v2`) before breaking changes.
-3. Enums always add new values at the end with the next integer.
-4. `payload` stays `google.protobuf.Struct` — business tables are not part of
-   the wire schema and must not be declared here.
+1. Never hand-write wire types in any component without also adding a
+   drift test against `testdata/messages.json`.
+2. Adding a field is backwards compatible; renumbering or removing is
+   not.  When a true break is needed, bump the proto package
+   (`package appunvs2;`) and migrate consumers explicitly.
+3. Enums always add new values at the end with the next integer; never
+   reuse a discarded number.
+4. `payload` (in `Message`) stays `google.protobuf.Struct`. Business
+   tables are not part of the wire schema and must not be declared
+   here — they live in the user-defined schema (see `schema.proto`).

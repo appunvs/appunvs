@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+// User-defined dynamic schema for the data-sync layer.  Tables and
+// columns are namespace-scoped; the relay validates every Message
+// targeting a non-meta table against the declared shape here.  The
+// reserved meta-table "_schema" carries schema-mutation broadcasts
+// (Op = TABLE_CREATE / COLUMN_ADD / etc.).
+package appunvs;
+
+option go_package = "github.com/appunvs/appunvs/relay/internal/pb;pb";
+
+// ColumnType is the cell type enforced by /schema validation.
+enum ColumnType {
+  COLUMN_TYPE_UNSPECIFIED = 0;
+  COLUMN_TYPE_TEXT        = 1;
+  COLUMN_TYPE_NUMBER      = 2;
+  COLUMN_TYPE_BOOL        = 3;
+  COLUMN_TYPE_JSON        = 4;
+}
+
+// POST /schema/tables
+message SchemaCreateTableRequest {
+  string name = 1;
+}
+
+// Returned by POST /schema/tables and included inside SchemaListTablesResponse.
+message SchemaTable {
+  string                name       = 1;
+  int64                 created_at = 2;
+  repeated SchemaColumn columns    = 3;
+}
+
+message SchemaColumn {
+  string     name       = 1;
+  ColumnType type       = 2;
+  bool       required   = 3;
+  int64      created_at = 4;
+}
+
+// GET /schema/tables
+message SchemaListTablesResponse {
+  repeated SchemaTable tables = 1;
+}
+
+// POST /schema/tables/:name/columns
+message SchemaAddColumnRequest {
+  string     name     = 1;  // column name
+  ColumnType type     = 2;
+  bool       required = 3;
+}
