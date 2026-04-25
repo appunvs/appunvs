@@ -99,7 +99,10 @@ dependencies {
     // this becomes `implementation("io.<brand>:runtime:1.0.0")` from a
     // Maven coordinate — single line change.  CI runs the SDK build
     // BEFORE this gradle invocation.
-    implementation(files("../../runtime/build/android/runtime.aar"))
+    //
+    // Path: this file lives at appunvs/android/app/build.gradle.kts —
+    // three levels deep — so `../../../` is the repo root.
+    implementation(files("../../../runtime/build/android/runtime.aar"))
 
     debugImplementation(libs.androidx.ui.tooling)
 
