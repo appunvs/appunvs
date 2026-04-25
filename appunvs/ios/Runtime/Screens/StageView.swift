@@ -1,42 +1,45 @@
-// StageView — D2.b smoke test.  The host now links RuntimeSDK
-// (built from runtime/sdk/ios/) and calls into its hello function to
-// prove the linkage works end-to-end.
+// StageView — D2.d wires the host Stage tab to mount the runtime
+// SDK's RuntimeView (a UIView subclass) via UIViewRepresentable.
 //
-// D2.c widens the SDK to expose a real RuntimeView; D2.d mounts that
-// here in place of the hello text.  D2.e wires the active Box's
-// bundle URL through to RuntimeView.loadBundle(...).
+// Today the bundle URL is hardcoded so the host can be visually
+// verified end-to-end without the relay / Box flow.  D2.e replaces
+// the hardcoded URL with `boxStore.activeBox?.bundleURL` and reacts
+// to changes (`.onChange(of: ...)` → reset + reload).
 import SwiftUI
 import RuntimeSDK
 
 struct StageView: View {
-    private var sdkGreeting: String {
-        // runtime_sdk_hello() returns a static C string — no free needed.
-        guard let cstr = runtime_sdk_hello() else { return "(null)" }
-        return String(cString: cstr)
-    }
+    /// Hardcoded for D2.d.  D2.e binds this to BoxStore.activeBox's
+    /// bundle URL and reacts to changes.
+    private let demoBundleURL = URL(string: "https://relay.example/_artifacts/box_demo/v1/index.bundle")!
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            VStack(spacing: Spacing.l) {
-                Image(systemName: "play.rectangle.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(Theme.brandLight.color)
-                Text("Stage")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(Color.white)
-                Text(sdkGreeting)
-                    .font(.callout.monospaced())
-                    .foregroundStyle(Color(white: 0.7))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 320)
-                Text("D2.c will replace this with a real RuntimeView mount.")
-                    .font(.caption)
-                    .foregroundStyle(Color(white: 0.5))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 320)
-            }
-            .padding(Spacing.xxl)
+            RuntimeViewRepresentable(bundleURL: demoBundleURL)
+                .ignoresSafeArea()
+        }
+    }
+}
+
+/// SwiftUI bridge for the SDK's UIKit RuntimeView.  Holds a single
+/// instance per Stage mount; updates to `bundleURL` cause the wrapped
+/// view to reload.
+private struct RuntimeViewRepresentable: UIViewRepresentable {
+    let bundleURL: URL
+
+    func makeUIView(context: Context) -> RuntimeView {
+        let view = RuntimeView(frame: .zero)
+        // ObjC method `loadBundleAtURL:completion:` imports as
+        // `loadBundle(at:completion:)` (Swift drops the "URL"
+        // suffix since it's redundant with the parameter type).
+        view.loadBundle(at: bundleURL, completion: nil)
+        return view
+    }
+
+    func updateUIView(_ uiView: RuntimeView, context: Context) {
+        if uiView.currentBundleURL != bundleURL {
+            uiView.loadBundle(at: bundleURL, completion: nil)
         }
     }
 }
