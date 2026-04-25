@@ -1,11 +1,13 @@
-// ProfileView — minimal account center.  Sections:
+// ProfileView — account center.  Sections:
 //
 //   1. Account header (placeholder identity)
-//   2. Theme override picker (functional today; persists via AppState)
+//   2. Today's usage (mock numbers)
+//   3. Theme override (functional, persisted to UserDefaults)
+//   4. Devices (placeholder)
+//   5. Footer (sign-out placeholder + version string)
 //
-// Usage quotas / devices / billing land in PR C alongside the network
-// client.  Box list management is intentionally NOT here — that lives
-// in the Chat tab's BoxSwitcher chip.
+// Box list is intentionally NOT here — switching Box lives in the
+// Chat tab's BoxSwitcher chip.
 import SwiftUI
 
 struct ProfileView: View {
@@ -13,52 +15,158 @@ struct ProfileView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    HStack(spacing: Spacing.l) {
-                        Circle()
-                            .fill(Theme.brandPale.color)
-                            .frame(width: 56, height: 56)
-                            .overlay(
-                                Text("u")
-                                    .font(.title2.weight(.bold))
-                                    .foregroundStyle(Theme.brandDark.color)
-                            )
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("未登录用户")
-                                .font(.headline)
-                                .foregroundStyle(Theme.textPrimary.color)
-                            Text("guest@local")
-                                .font(.subheadline)
-                                .foregroundStyle(Theme.textSecondary.color)
-                        }
-                        Spacer()
-                    }
-                    .padding(.vertical, Spacing.xs)
+            ScrollView {
+                VStack(spacing: Spacing.l) {
+                    accountCard
+                    usageCard
+                    themeCard
+                    devicesCard
+                    footer
                 }
-
-                Section("主题") {
-                    Picker("", selection: $state.themeOverride) {
-                        Text("跟随系统").tag(AppState.ThemeOverride.system)
-                        Text("浅色").tag(AppState.ThemeOverride.light)
-                        Text("深色").tag(AppState.ThemeOverride.dark)
-                    }
-                    .pickerStyle(.segmented)
-                }
-
-                Section {
-                    Text("appunvs · v0.0.1")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.textSecondary.color)
-                }
+                .padding(Spacing.l)
             }
-            .navigationTitle("个人中心")
             .scrollContentBackground(.hidden)
             .background(Theme.bgPage.color)
+            .navigationTitle("个人中心")
+        }
+    }
+
+    // MARK: - Sections
+
+    private var accountCard: some View {
+        Card {
+            HStack(spacing: Spacing.l) {
+                Circle()
+                    .fill(Theme.brandPale.color)
+                    .frame(width: 56, height: 56)
+                    .overlay(
+                        Text("u")
+                            .font(.title2.weight(.bold))
+                            .foregroundStyle(Theme.brandDark.color)
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("未登录用户")
+                        .font(.headline)
+                        .foregroundStyle(Theme.textPrimary.color)
+                    Text("guest@local")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textSecondary.color)
+                }
+                Spacer()
+                Badge("Free", tone: .info)
+            }
+        }
+    }
+
+    private var usageCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: Spacing.m) {
+                Text("本月用量")
+                    .font(.headline)
+                    .foregroundStyle(Theme.textPrimary.color)
+                QuotaRow(label: "对话", used: 0, cap: 300)
+                QuotaRow(label: "存储", used: 0, cap: 5_120, unit: "MB")
+            }
+        }
+    }
+
+    private var themeCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: Spacing.s) {
+                Text("主题")
+                    .font(.headline)
+                    .foregroundStyle(Theme.textPrimary.color)
+                Picker("", selection: $state.themeOverride) {
+                    Text("跟随系统").tag(AppState.ThemeOverride.system)
+                    Text("浅色").tag(AppState.ThemeOverride.light)
+                    Text("深色").tag(AppState.ThemeOverride.dark)
+                }
+                .pickerStyle(.segmented)
+            }
+        }
+    }
+
+    private var devicesCard: some View {
+        Card(padding: 0) {
+            VStack(spacing: 0) {
+                Text("设备")
+                    .font(.headline)
+                    .foregroundStyle(Theme.textPrimary.color)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Spacing.l)
+                Divider().background(Theme.borderDefault.color)
+                HStack(spacing: Spacing.m) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("当前设备")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary.color)
+                        Text("此刻活跃")
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary.color)
+                    }
+                    Spacer()
+                    Badge("本机", tone: .info)
+                }
+                .padding(Spacing.l)
+            }
+        }
+    }
+
+    private var footer: some View {
+        VStack(spacing: Spacing.s) {
+            Button("退出登录") {
+                // network/auth wiring lands in a follow-up PR
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.textSecondary.color)
+            Text("appunvs · v0.0.1 (dev)")
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary.color)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, Spacing.l)
+    }
+}
+
+private struct QuotaRow: View {
+    let label: String
+    let used: Int
+    let cap: Int
+    var unit: String? = nil
+
+    private var ratio: Double {
+        cap == 0 ? 0 : min(1, Double(used) / Double(cap))
+    }
+
+    private var fillColor: Color {
+        ratio >= 0.9 ? Theme.semanticWarning.color : Theme.brandDark.color
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary.color)
+                Spacer()
+                Text("\(used) / \(cap)\(unit.map { " \($0)" } ?? "")")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary.color)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.bgInput.color)
+                    Capsule()
+                        .fill(fillColor)
+                        .frame(width: geo.size.width * ratio)
+                }
+            }
+            .frame(height: 6)
         }
     }
 }
 
 #Preview {
-    ProfileView().environmentObject(AppState())
+    ProfileView()
+        .environmentObject(AppState())
 }
