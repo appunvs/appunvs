@@ -38,29 +38,6 @@ jobs:
         env:
           APPUNVS_TEST_REDIS: localhost:6379
 
-  # The `app/` Expo monorepo is at skeleton stage in this PR (no lockfile,
-  # SDK versions pinned but not yet installed). A `tsc --noEmit` job will
-  # land once the workspace stabilizes — see TODO in app/README.md.
-
-  desktop:
-    name: desktop (Tauri/Rust)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: desktop/src-tauri
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install Tauri system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev \
-            libayatana-appindicator3-dev librsvg2-dev
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: desktop/src-tauri
-      # Lib tests + drift test. The e2e test requires a running relay and
-      # is skipped here.
-      - run: cargo test --lib
-      - run: cargo test --test drift
+  # Native iOS + Android jobs live in `.github/workflows/native.yml` so
+  # they only fire on `runtime/**` changes.  The Tauri job that lived
+  # here is gone with the desktop pivot; v1 ships mobile-only.

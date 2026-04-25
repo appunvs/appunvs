@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto Backup rules for SDK <= 30.  Empty = "back up everything",
+     which is the v0 default; revisit when sensitive data lands. -->
+<full-backup-content>
+    <!-- include rules go here -->
+</full-backup-content>

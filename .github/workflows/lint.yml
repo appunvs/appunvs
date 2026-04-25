@@ -25,24 +25,6 @@ jobs:
           working-directory: relay
           args: --timeout 5m
 
-  clippy:
-    name: clippy
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: desktop/src-tauri
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - name: Install Tauri system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev \
-            libayatana-appindicator3-dev librsvg2-dev
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: desktop/src-tauri
-      - run: cargo clippy --all-targets -- -D warnings
+  # The clippy job that lived here is gone with the desktop pivot.
+  # iOS and Android linting (SwiftLint / detekt) will land alongside
+  # the UI port — for now native CI just enforces "it compiles".
