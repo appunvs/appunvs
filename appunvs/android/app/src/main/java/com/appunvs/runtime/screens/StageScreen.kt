@@ -1,6 +1,10 @@
-// StageScreen — placeholder.  PR D wires a native AndroidView that
-// hosts a sandboxed Hermes runtime to render the active Box's
-// bundle.  Today shows an empty-state pointing forward.
+// StageScreen — D2.b smoke test.  The host now links the runtime SDK
+// AAR (built from runtime/sdk/android/) and calls into its hello
+// method to prove the linkage works end-to-end.
+//
+// D2.c widens the SDK to expose a real RuntimeView; D2.d mounts that
+// here in place of the hello text.  D2.e wires the active Box's
+// bundle URL through to RuntimeView.loadBundle(...).
 package com.appunvs.runtime.screens
 
 import androidx.compose.foundation.background
@@ -17,11 +21,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 import com.appunvs.runtime.theme.LocalAppColors
 import com.appunvs.runtime.theme.Spacing
+import com.appunvs.runtimesdk.RuntimeSDK
 
 @Composable
 fun StageScreen(modifier: Modifier = Modifier) {
@@ -47,10 +53,19 @@ fun StageScreen(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.titleLarge.copy(color = Color.White),
             )
             Text(
-                text = "待 PR D: SubRuntime native module 接入。",
-                style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFFB0B0B0)),
+                text = RuntimeSDK.hello(),
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = Color(0xFFB0B0B0),
+                    fontFamily = FontFamily.Monospace,
+                ),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = Spacing.m.dp),
+            )
+            Text(
+                text = "D2.c will replace this with a real RuntimeView mount.",
+                style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF707070)),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = Spacing.s.dp),
             )
         }
     }

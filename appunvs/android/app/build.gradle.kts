@@ -93,6 +93,14 @@ dependencies {
     // EncryptedSharedPreferences for the device token (Keychain equivalent).
     implementation(libs.androidx.security.crypto)
 
+    // Runtime SDK — built by `runtime/packaging/build-android.sh` into
+    // runtime/build/android/runtime.aar.  File-path link today (single
+    // monorepo, single producer); when the SDK splits to its own repo,
+    // this becomes `implementation("io.<brand>:runtime:1.0.0")` from a
+    // Maven coordinate — single line change.  CI runs the SDK build
+    // BEFORE this gradle invocation.
+    implementation(files("../../runtime/build/android/runtime.aar"))
+
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation(libs.junit)

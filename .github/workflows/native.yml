@@ -30,6 +30,12 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      # Build the runtime SDK first — appunvs/ios/project.yml links the
+      # XCFramework by relative path (../../runtime/build/ios/...).
+      # CI must produce that file before xcodegen runs.
+      - name: Build RuntimeSDK.xcframework
+        run: bash runtime/packaging/build-ios.sh
+
       - name: Generate Xcode project
         working-directory: appunvs/ios
         run: xcodegen generate
@@ -77,6 +83,12 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      # Build the runtime SDK first — appunvs/android links runtime.aar
+      # by relative path (../../runtime/build/android/runtime.aar).
+      # CI must produce that file before this gradle invocation.
+      - name: Build runtime.aar
+        run: bash runtime/packaging/build-android.sh
 
       - name: Build debug APK
         working-directory: appunvs/android

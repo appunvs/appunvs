@@ -43,6 +43,16 @@ targets:
         # production builds (handled by a Release-only override later).
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+    # Link the runtime SDK by relative file path.  This works because
+    # the monorepo layout (appunvs/ios + runtime/) is fixed today; once
+    # the SDK splits to its own repo (deferred), this becomes a
+    # SwiftPM / CocoaPods dep — single line change.  CI must run
+    # `runtime/packaging/build-ios.sh` BEFORE xcodebuild so this path
+    # exists by then.
+    dependencies:
+      - framework: ../../runtime/build/ios/RuntimeSDK.xcframework
+        embed: true
+        codeSign: true
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1,2"  # iPhone + iPad
@@ -52,3 +62,6 @@ targets:
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "Apple Development"
+        # XcodeGen translates the `framework: ../../runtime/build/...`
+        # entry into FRAMEWORK_SEARCH_PATHS automatically; nothing else
+        # needs to be set here.
