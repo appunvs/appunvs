@@ -25,14 +25,25 @@ mkdir -p "$OUT"
 #    `gradle :runtimesdk:assembleRelease` errors during settings parse.
 #    --no-audit + --no-fund speeds up CI; --legacy-peer-deps tolerates
 #    RN's deeply-nested peer deps that strict npm 7+ would reject.
-echo "==> npm install (for @react-native/gradle-plugin)"
-npm install --no-audit --no-fund --legacy-peer-deps
+echo "==> environment"
+echo "  node:    $(node --version 2>&1 || echo MISSING)"
+echo "  npm:     $(npm --version 2>&1 || echo MISSING)"
+echo "  java:    $(java -version 2>&1 | head -1 || echo MISSING)"
+echo "  gradle:  $(gradle --version 2>&1 | head -1 || echo MISSING)"
+echo "  ANDROID_HOME=${ANDROID_HOME:-unset}"
+ls "${ANDROID_HOME:-/nope}/platforms" 2>&1 | head -3 || echo "  (no platforms dir)"
 
-# 2. assembleRelease the runtimesdk module.  app module isn't built —
-#    it'd require an extra Hermes/JSC ABI download and we don't ship
-#    the dev-harness app as a build artifact.
+echo "==> npm install (for @react-native/gradle-plugin)"
+npm install --no-audit --no-fund --legacy-peer-deps 2>&1 | tail -20
+
+echo "==> verify @react-native/gradle-plugin is on disk"
+ls -la node_modules/@react-native/gradle-plugin 2>&1 | head -5 || echo "MISSING — settings.gradle parsing will fail"
+
+# assembleRelease the runtimesdk module.  app module isn't built —
+# it'd require an extra Hermes/JSC ABI download and we don't ship
+# the dev-harness app as a build artifact.
 echo "==> gradle :runtimesdk:assembleRelease"
-(cd android && gradle :runtimesdk:assembleRelease --no-daemon)
+(cd android && gradle :runtimesdk:assembleRelease --stacktrace --no-daemon)
 
 AAR="android/runtimesdk/build/outputs/aar/runtimesdk-release.aar"
 if [ ! -f "$AAR" ]; then
