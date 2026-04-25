@@ -1,0 +1,40 @@
+name: RuntimeSDK
+options:
+  bundleIdPrefix: com.appunvs
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    BUILD_LIBRARY_FOR_DISTRIBUTION: YES
+    SKIP_INSTALL: NO
+    DEFINES_MODULE: YES
+    ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: NO
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
+
+targets:
+  RuntimeSDK:
+    type: framework
+    platform: iOS
+    sources:
+      - path: SDK
+        excludes:
+          - "**/.DS_Store"
+    info:
+      path: SDK/Info.plist
+      properties:
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.1.0"
+        CFBundlePackageType: FMWK
+    settings:
+      base:
+        PRODUCT_NAME: RuntimeSDK
+        PRODUCT_BUNDLE_IDENTIFIER: com.appunvs.runtimesdk
+        # D2.a is a pure C/Obj-C umbrella exposing one hello function.
+        # No Swift code yet — no swift_module to ship. Stays pure C ABI
+        # so host code can link without dragging Swift runtime symbols.
+        DEFINES_MODULE: YES
+        CLANG_ENABLE_MODULES: YES

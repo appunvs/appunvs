@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Empty manifest for the runtime SDK library.  D2.a doesn't need any
+  permissions, components, or metadata.  PR D2.c may add INTERNET (for
+  Metro dev-server bundle fetch) but that's still on the host's manifest,
+  not the SDK's.
+-->
+<manifest />
