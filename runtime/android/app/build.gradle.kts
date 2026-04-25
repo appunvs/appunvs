@@ -78,14 +78,16 @@ dependencies {
     // components, this provides the splash/window theme XML.
     implementation(libs.google.material)
 
-    // Network: Retrofit + OkHttp + Kotlinx serialization.  We use OkHttp
-    // directly for /ai/turn SSE because we want streaming line reads
-    // without dragging in a dedicated SSE library.
+    // Network: Retrofit + OkHttp + Kotlinx serialization.  The kotlinx
+    // converter is hand-written (see net/JsonConverterFactory.kt) — the
+    // community ports drift between Kotlin/serialization releases and
+    // it's a 30-line file we own anyway.  OkHttp is used directly for
+    // the /ai/turn SSE stream so we get line-by-line reads without a
+    // dedicated SSE library.
     implementation(libs.retrofit)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.retrofit.kotlinx.serialization.converter)
     implementation(libs.kotlinx.coroutines.android)
 
     // EncryptedSharedPreferences for the device token (Keychain equivalent).

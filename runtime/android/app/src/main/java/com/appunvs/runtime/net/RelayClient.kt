@@ -7,10 +7,8 @@ package com.appunvs.runtime.net
 
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
-import retrofit2.converter.kotlinx.serialization.asConverterFactory
 
 fun interface TokenSource {
     fun current(): String?
@@ -43,7 +41,7 @@ object RelayClient {
         val retrofit = Retrofit.Builder()
             .baseUrl(NetConfig.relayBaseURL)
             .client(ok)
-            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+            .addConverterFactory(JsonConverterFactory(json))
             .build()
 
         val api = retrofit.create(RelayApi::class.java)

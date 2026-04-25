@@ -16,7 +16,11 @@ final class BoxStore: ObservableObject {
 
     private var api: BoxAPI
 
-    init(http: HTTPClient) {
+    /// `nonisolated` so the placeholder construction in
+    /// `SignedInRoot.init` (a non-isolated synchronous View init under
+    /// `@preconcurrency View`) doesn't need to hop the main actor just
+    /// to assign one stored property.
+    nonisolated init(http: HTTPClient) {
         self.api = BoxAPI(http: http)
     }
 

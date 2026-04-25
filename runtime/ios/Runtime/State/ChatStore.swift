@@ -39,7 +39,8 @@ final class ChatStore: ObservableObject {
     private var sse: AISSEClient
     private var currentTask: Task<Void, Never>?
 
-    init(sse: AISSEClient) {
+    /// `nonisolated` for the same reason as BoxStore.init.
+    nonisolated init(sse: AISSEClient) {
         self.sse = sse
     }
 
