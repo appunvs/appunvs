@@ -1,4 +1,4 @@
-// Package ai — OpenAI-compatible agent loop (DeepSeek by default).
+// Package ai — OpenAI-compatible agent loop.
 //
 // The engine drives one Chat turn end-to-end:
 //
@@ -14,10 +14,11 @@
 // frames terminated by a finished frame; the N model round-trips inside
 // one turn are invisible from the outside.
 //
-// Why OpenAI-compatible and not provider-native SDKs: DeepSeek, 火山 Ark,
-// 阿里百炼, 智谱 GLM, Moonshot all expose the same wire shape.  One client
-// pointed at a different `BaseURL` + `Model` swaps provider without
-// touching the agent.
+// Why a single engine for multiple providers: DeepSeek, Volcengine Ark,
+// Moonshot Kimi, Zhipu GLM, Dashscope Qwen all expose the same wire
+// shape.  `providers.go` curates BaseURL + default Model + API-key env
+// conventions for each; callers pick one via `Config.Provider` (or pass
+// `BaseURL` + `Model` directly for an unlisted endpoint).
 package ai
 
 import (
@@ -37,49 +38,75 @@ import (
 	"github.com/appunvs/appunvs/relay/internal/workspace"
 )
 
-// Config controls the DeepSeekEngine.  Zero values fall back to sane
-// defaults except `APIKey`, which must be set explicitly.
+// Config controls the OpenAIEngine.  Zero values fall back to sane
+// defaults except `APIKey`, which must be set explicitly.  When
+// `Provider` names a registry entry, its `BaseURL` and `ModelChat`
+// become defaults; any non-empty field on Config still wins.
 type Config struct {
-	BaseURL   string        // default: https://api.deepseek.com/v1
+	// Provider selects a curated registry entry (`deepseek`,
+	// `volcengine`, `moonshot`, `zhipu`, `dashscope`).  Leave empty
+	// to use an unlisted endpoint — in that case `BaseURL` and
+	// `Model` are required.
+	Provider string
+
+	BaseURL   string        // overrides provider default
 	APIKey    string        // required
-	Model     string        // default: deepseek-chat
+	Model     string        // overrides provider default
 	System    string        // default: built-in agent system prompt
 	MaxIters  int           // hard cap on tool-use iterations, default 10
 	MaxTokens int           // per-turn max_tokens, default 8000
 	Timeout   time.Duration // per-turn wall clock, default 10m
 }
 
-// Common model strings.  Pass a literal if your provider uses a different
-// id (e.g. `glm-4.6`, `qwen3-coder-plus`, `doubao-seed-coder`).
-const (
-	ModelDeepSeekChat      = "deepseek-chat"
-	ModelDeepSeekReasoner  = "deepseek-reasoner"
-	DefaultDeepSeekBaseURL = "https://api.deepseek.com/v1"
-)
-
-// DeepSeekEngine implements Engine against any OpenAI-compatible provider.
-// Named for the default target; works against DeepSeek / 火山 Ark / 阿里
-// 百炼 / 智谱 GLM / Moonshot / OpenAI with only `BaseURL` and `Model`
-// differing.
-type DeepSeekEngine struct {
+// OpenAIEngine implements Engine against any OpenAI-compatible provider.
+// One engine instance serves one provider+model combo; to use several
+// providers per turn (router behavior), instantiate several engines and
+// choose between them at call time.
+type OpenAIEngine struct {
 	client    *openai.Client
 	workspace *workspace.Store
 	box       *box.Service
 	turns     *store.Turns
 	cfg       Config
+	provider  Provider // resolved from registry when Config.Provider was set; zero value otherwise
 	log       *zap.Logger
 }
 
-// NewDeepSeekEngine wires everything up.
-func NewDeepSeekEngine(cfg Config, ws *workspace.Store, boxSvc *box.Service, turns *store.Turns, log *zap.Logger) (*DeepSeekEngine, error) {
+// NewOpenAIEngine wires everything up.  Resolution order for BaseURL and
+// Model:
+//
+//  1. Config.{BaseURL,Model} if set — always wins.
+//  2. Registry entry for Config.Provider — if the field is populated
+//     there (e.g. Volcengine Ark has no default Model; caller must set it).
+//  3. Error — BaseURL and Model must come from somewhere.
+func NewOpenAIEngine(cfg Config, ws *workspace.Store, boxSvc *box.Service, turns *store.Turns, log *zap.Logger) (*OpenAIEngine, error) {
 	if cfg.APIKey == "" {
 		return nil, errors.New("ai: APIKey required")
 	}
+
+	var provider Provider
+	if cfg.Provider != "" {
+		p, err := Resolve(cfg.Provider)
+		if err != nil {
+			return nil, err
+		}
+		provider = p
+		if cfg.BaseURL == "" {
+			cfg.BaseURL = p.BaseURL
+		}
+		if cfg.Model == "" {
+			cfg.Model = p.ModelChat
+		}
+	}
 	if cfg.BaseURL == "" {
-		cfg.BaseURL = DefaultDeepSeekBaseURL
+		return nil, errors.New("ai: BaseURL required (set Provider or BaseURL)")
 	}
 	if cfg.Model == "" {
-		cfg.Model = ModelDeepSeekChat
+		note := ""
+		if provider.Note != "" {
+			note = " (note: " + provider.Note + ")"
+		}
+		return nil, fmt.Errorf("ai: Model required for provider %q%s", cfg.Provider, note)
 	}
 	if cfg.MaxIters == 0 {
 		cfg.MaxIters = 10
@@ -95,15 +122,22 @@ func NewDeepSeekEngine(cfg Config, ws *workspace.Store, boxSvc *box.Service, tur
 	}
 	ocfg := openai.DefaultConfig(cfg.APIKey)
 	ocfg.BaseURL = cfg.BaseURL
-	return &DeepSeekEngine{
+	return &OpenAIEngine{
 		client:    openai.NewClientWithConfig(ocfg),
 		workspace: ws,
 		box:       boxSvc,
 		turns:     turns,
 		cfg:       cfg,
+		provider:  provider,
 		log:       log,
 	}, nil
 }
+
+// Provider returns the resolved registry entry, or the zero Provider
+// when Config.Provider was empty (caller supplied BaseURL / Model
+// directly).  Useful for logging which backend the engine actually
+// wired up.
+func (e *OpenAIEngine) Provider() Provider { return e.provider }
 
 // defaultSystemPrompt is byte-stable across turns — the prefix
 // `tools + system` gets cached server-side, so keep it deterministic
@@ -126,7 +160,7 @@ Rules:
 // Run implements Engine.Run.  The returned channel emits Token / ToolCall
 // / ToolResult frames as the agent progresses, terminating with a
 // Finished or Err frame.
-func (e *DeepSeekEngine) Run(ctx context.Context, req Request) (<-chan Frame, error) {
+func (e *OpenAIEngine) Run(ctx context.Context, req Request) (<-chan Frame, error) {
 	if req.BoxID == "" {
 		return nil, errors.New("ai: Request.BoxID required")
 	}
@@ -240,7 +274,7 @@ func (e *DeepSeekEngine) Run(ctx context.Context, req Request) (<-chan Frame, er
 // out as they arrive, accumulates tool_calls (which stream as partial
 // JSON across many deltas in the OpenAI protocol), and returns the
 // assembled assistant message + finish reason + usage.
-func (e *DeepSeekEngine) runOne(ctx context.Context, out chan<- Frame, turnID string, messages []openai.ChatCompletionMessage) (openai.ChatCompletionMessage, openai.Usage, string, error) {
+func (e *OpenAIEngine) runOne(ctx context.Context, out chan<- Frame, turnID string, messages []openai.ChatCompletionMessage) (openai.ChatCompletionMessage, openai.Usage, string, error) {
 	req := openai.ChatCompletionRequest{
 		Model:     e.cfg.Model,
 		Messages:  messages,
@@ -344,7 +378,7 @@ func (e *DeepSeekEngine) runOne(ctx context.Context, out chan<- Frame, turnID st
 // loadHistory rebuilds conversation state from the last N turns.  Capped
 // by count in v1; compaction lands when real users start overrunning
 // 128k context.
-func (e *DeepSeekEngine) loadHistory(ctx context.Context, boxID string) ([]openai.ChatCompletionMessage, error) {
+func (e *OpenAIEngine) loadHistory(ctx context.Context, boxID string) ([]openai.ChatCompletionMessage, error) {
 	rows, err := e.turns.Recent(ctx, boxID, 20)
 	if err != nil {
 		return nil, err
@@ -371,7 +405,7 @@ func (e *DeepSeekEngine) loadHistory(ctx context.Context, boxID string) ([]opena
 	return out, nil
 }
 
-func (e *DeepSeekEngine) emitErr(out chan<- Frame, turnID string, err error) {
+func (e *OpenAIEngine) emitErr(out chan<- Frame, turnID string, err error) {
 	e.log.Warn("ai: turn aborted", zap.String("turn_id", turnID), zap.Error(err))
 	// Best-effort send; if the consumer gave up we don't want to block.
 	select {
