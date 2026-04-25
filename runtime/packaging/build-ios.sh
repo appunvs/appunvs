@@ -2,14 +2,11 @@
 # build-ios.sh — produces RuntimeSDK.xcframework, the artifact the host
 # iOS app (appunvs/ios/) links to mount AI bundles inside its Stage tab.
 #
-# D3.b (this PR): SDK now links React Native + Hermes via the same
-# Podfile that backs the dev-harness app.  Build flow:
-#
-#   1. npm install          (resolves react-native, @react-native/...)
-#   2. cd ios && pod install (materializes Hermes, React-Core, ReactCommon)
-#   3. xcodegen generate     (produces SDK.xcodeproj using Pods xcconfig)
-#   4. xcodebuild archive    (device + simulator)
-#   5. xcodebuild -create-xcframework
+# D3.a (this PR): SDK lives inside the RN init project at runtime/ios/.
+# Empty-shell SDK still — D3.b adds the RN+Hermes deps that need
+# pod install.  Today's build is independent of the RN init's
+# xcworkspace; xcodebuild builds against the standalone SDK.xcodeproj
+# only.
 #
 # Output: runtime/build/ios/RuntimeSDK.xcframework
 set -euo pipefail
@@ -18,12 +15,6 @@ cd "$(dirname "$0")/.."
 
 OUT="build/ios"
 mkdir -p "$OUT"
-
-echo "==> npm install (RN init's package.json)"
-npm install --no-audit --no-fund --legacy-peer-deps
-
-echo "==> pod install (cocoapods + RN pods)"
-(cd ios && pod install --repo-update)
 
 echo "==> xcodegen --version"
 xcodegen --version || true
@@ -37,11 +28,6 @@ xcodebuild -list -project ios/RuntimeSDK.xcodeproj || true
 DEVICE_ARCHIVE="$OUT/RuntimeSDK-iphoneos.xcarchive"
 SIM_ARCHIVE="$OUT/RuntimeSDK-iphonesimulator.xcarchive"
 
-# Use -workspace so the SDK target finds Pods as well — the workspace
-# pulls in Pods.xcodeproj which our .xcconfig references.  But since
-# pod install only writes RuntimeSdk.xcworkspace (not SDK), build by
-# project but with the Pods path setup via xcconfig (handled by
-# configFiles: in SDK.yml).
 xcodebuild archive \
   -project ios/RuntimeSDK.xcodeproj \
   -scheme RuntimeSDK \
