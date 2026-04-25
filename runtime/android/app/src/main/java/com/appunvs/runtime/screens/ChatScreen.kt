@@ -1,6 +1,5 @@
 // ChatScreen — header chip (BoxSwitcher) + transcript + composer.
-// AI is mock today via MockStore.appendUser; real /ai/turn SSE
-// arrives in the network/auth follow-up PR.
+// Backed by ChatViewModel (real /ai/turn SSE) and BoxRepo (real /box).
 package com.appunvs.runtime.screens
 
 import androidx.compose.foundation.background
@@ -18,7 +17,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,8 +29,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
+import com.appunvs.runtime.state.BoxRepo
 import com.appunvs.runtime.state.ChatRole
-import com.appunvs.runtime.state.MockStore
+import com.appunvs.runtime.state.ChatViewModel
 import com.appunvs.runtime.theme.LocalAppColors
 import com.appunvs.runtime.theme.Spacing
 import com.appunvs.runtime.ui.Bubble
@@ -43,12 +42,15 @@ import com.appunvs.runtime.ui.NewBoxSheet
 
 @Composable
 fun ChatScreen(
-    store: MockStore,
+    boxRepo: BoxRepo,
+    chat: ChatViewModel,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalAppColors.current
     var draft by remember { mutableStateOf("") }
     var newBoxOpen by remember { mutableStateOf(false) }
+    val activeBoxID = boxRepo.activeBox?.boxID
+    val messages = chat.messages(activeBoxID)
 
     Column(
         modifier = modifier
@@ -63,20 +65,20 @@ fun ChatScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BoxSwitcher(
-                store = store,
+                repo = boxRepo,
                 onNewBox = { newBoxOpen = true },
             )
         }
         Divider(color = colors.borderDefault)
 
         // Transcript
-        if (store.activeBox == null) {
+        if (activeBoxID == null) {
             EmptyState(
                 title = "选个 Box 开始",
                 hint = "每个 Box 是一个独立项目，对话历史与代码都和它绑定。",
                 modifier = Modifier.weight(1f),
             )
-        } else if (store.messages.isEmpty()) {
+        } else if (messages.isEmpty()) {
             EmptyState(
                 title = "和 AI 说点什么",
                 hint = "比如\"做一个计数器 app\"。",
@@ -84,9 +86,9 @@ fun ChatScreen(
             )
         } else {
             val listState = rememberLazyListState()
-            LaunchedEffect(store.messages.size) {
-                if (store.messages.isNotEmpty()) {
-                    listState.animateScrollToItem(store.messages.lastIndex)
+            LaunchedEffect(messages.size) {
+                if (messages.isNotEmpty()) {
+                    listState.animateScrollToItem(messages.lastIndex)
                 }
             }
             LazyColumn(
@@ -95,7 +97,7 @@ fun ChatScreen(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(Spacing.l.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                items(store.messages, key = { it.id }) { msg ->
+                items(messages, key = { it.id }) { msg ->
                     Bubble(
                         role = msg.role.bubbleRole(),
                         text = msg.text,
@@ -125,13 +127,16 @@ fun ChatScreen(
             Button(
                 onClick = {
                     val t = draft.trim()
-                    if (t.isNotEmpty()) {
-                        store.appendUser(t)
+                    val box = boxRepo.activeBox
+                    if (t.isNotEmpty() && box != null) {
+                        chat.send(box.boxID, t)
                         draft = ""
                     }
                 },
-                enabled = draft.trim().isNotEmpty(),
-            ) { Text("发送") }
+                enabled = draft.trim().isNotEmpty()
+                    && activeBoxID != null
+                    && !chat.sending,
+            ) { Text(if (chat.sending) "…" else "发送") }
         }
     }
 
@@ -139,7 +144,7 @@ fun ChatScreen(
         NewBoxSheet(
             onDismiss = { newBoxOpen = false },
             onCreate = { title ->
-                store.createBox(title)
+                boxRepo.create(title)
                 newBoxOpen = false
             },
         )

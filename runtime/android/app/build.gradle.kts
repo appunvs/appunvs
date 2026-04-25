@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -76,6 +77,19 @@ dependencies {
     // resolved here; Compose Material3 (above) provides runtime
     // components, this provides the splash/window theme XML.
     implementation(libs.google.material)
+
+    // Network: Retrofit + OkHttp + Kotlinx serialization.  We use OkHttp
+    // directly for /ai/turn SSE because we want streaming line reads
+    // without dragging in a dedicated SSE library.
+    implementation(libs.retrofit)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.retrofit.kotlinx.serialization.converter)
+    implementation(libs.kotlinx.coroutines.android)
+
+    // EncryptedSharedPreferences for the device token (Keychain equivalent).
+    implementation(libs.androidx.security.crypto)
 
     debugImplementation(libs.androidx.ui.tooling)
 
