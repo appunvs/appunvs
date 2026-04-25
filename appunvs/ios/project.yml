@@ -1,0 +1,54 @@
+name: Runtime
+options:
+  bundleIdPrefix: com.appunvs
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
+
+targets:
+  Runtime:
+    type: application
+    platform: iOS
+    sources:
+      - path: Runtime
+        excludes:
+          - "**/.DS_Store"
+    info:
+      path: Runtime/Info.plist
+      properties:
+        CFBundleDisplayName: appunvs
+        CFBundleShortVersionString: "0.0.1"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIUserInterfaceStyle: ~  # respect system setting; user override applied at app level
+        # Dev-only ATS opening: allow http://localhost:8080 calls from
+        # the simulator to the local relay.  Tightens to https-only in
+        # production builds (handled by a Release-only override later).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2"  # iPhone + iPad
+        PRODUCT_BUNDLE_IDENTIFIER: com.appunvs.runtime
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_PREVIEWS: YES
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "Apple Development"
