@@ -74,7 +74,7 @@ jobs:
                 echo "**$(basename $log)** (last 120 lines)"
                 echo ""
                 echo '```'
-                tail -120 "$log"
+                tail -500 "$log"
                 echo '```'
               fi
             done
@@ -130,7 +130,7 @@ jobs:
                 echo "**$(basename $log)** (last 120 lines)"
                 echo ""
                 echo '```'
-                tail -120 "$log"
+                tail -500 "$log"
                 echo '```'
               fi
             done
@@ -169,7 +169,7 @@ jobs:
               echo "**sdk-build.log** (last 120 lines)"
               echo ""
               echo '```'
-              tail -120 /tmp/sdk-build.log
+              tail -500 /tmp/sdk-build.log
               echo '```'
             fi
           } > /tmp/comment.md
@@ -219,7 +219,7 @@ jobs:
               echo "**sdk-build.log** (last 120 lines)"
               echo ""
               echo '```'
-              tail -120 /tmp/sdk-build.log
+              tail -500 /tmp/sdk-build.log
               echo '```'
             fi
           } > /tmp/comment.md

@@ -42,8 +42,12 @@ ls -la node_modules/@react-native/gradle-plugin 2>&1 | head -5 || echo "MISSING 
 # assembleRelease the runtimesdk module.  app module isn't built —
 # it'd require an extra Hermes/JSC ABI download and we don't ship
 # the dev-harness app as a build artifact.
-echo "==> gradle :runtimesdk:assembleRelease"
-(cd android && gradle :runtimesdk:assembleRelease --stacktrace --no-daemon)
+echo "==> ./gradlew :runtimesdk:assembleRelease (using wrapper-pinned 9.3.1)"
+# Use the wrapper rather than the system `gradle` — wrapper pins the
+# version (9.3.1) that the RN 0.85.2 init was tested against. System
+# gradle (9.4.x via setup-gradle@v4) triggered "Internal compiler
+# error" inside Kotlin 2.1.20.
+(cd android && chmod +x gradlew && ./gradlew :runtimesdk:assembleRelease --stacktrace --no-daemon)
 
 AAR="android/runtimesdk/build/outputs/aar/runtimesdk-release.aar"
 if [ ! -f "$AAR" ]; then
