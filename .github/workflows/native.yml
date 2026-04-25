@@ -34,28 +34,18 @@ jobs:
 
       - name: Build (Debug, simulator)
         working-directory: runtime/ios
-        # Skip code signing — CI doesn't have a developer team set; the
-        # build target is the simulator slice which doesn't need signing.
         run: |
+          set -o pipefail
           xcodebuild \
             -project Runtime.xcodeproj \
             -scheme Runtime \
             -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            build | xcbeautify || xcodebuild \
-              -project Runtime.xcodeproj \
-              -scheme Runtime \
-              -configuration Debug \
-              -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
-              -derivedDataPath build \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGN_IDENTITY="" \
-              build
+            build
 
   android:
     name: runtime/android (Gradle)
@@ -69,18 +59,25 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platforms;android-35
-            build-tools;35.0.0
+      # ubuntu-24.04 ships with Android SDK pre-installed at
+      # $ANDROID_HOME (= $ANDROID_SDK_ROOT).  Verify the components AGP
+      # 8.7 + compileSdk 35 needs are present; install if not.
+      - name: Ensure Android SDK 35
+        run: |
+          set -e
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME" || true
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # CI doesn't run `gradle wrapper` first; Gradle from the action runs
-      # tasks directly against the project.
       - name: Build debug APK
         working-directory: runtime/android
-        run: gradle assembleDebug --stacktrace --no-daemon
+        run: |
+          gradle --version
+          gradle assembleDebug --stacktrace --info --no-daemon
