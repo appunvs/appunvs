@@ -25,6 +25,11 @@ FOUNDATION_EXPORT double RuntimeSDKVersionNumber;
 //! Project version string for RuntimeSDK.
 FOUNDATION_EXPORT const unsigned char RuntimeSDKVersionString[];
 
+// Public surface: expose every header the host needs to import here so
+// `@import RuntimeSDK;` (Swift `import RuntimeSDK`) gets all of them
+// in one shot.  D3 will add more (HostBridge, BundleLoader, etc.).
+#import <RuntimeSDK/RuntimeView.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
