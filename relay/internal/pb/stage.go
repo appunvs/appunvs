@@ -1,6 +1,6 @@
 // Stage-related types: Box, BundleRef, pairing request/response, version
 // update events, and AI chat stream frames. These mirror the messages added
-// to shared/proto/appunvs.proto alongside the original Message envelope.
+// to shared/proto/*.proto alongside the original Message envelope.
 //
 // Canonical on-the-wire form is protojson with UseProtoNames=true and enum
 // short lowercase values ("publish_state_published" -> "published",
@@ -9,7 +9,7 @@ package pb
 
 import "strings"
 
-// PublishState mirrors appunvs.v1.PublishState.
+// PublishState mirrors appunvs.PublishState.
 type PublishState int32
 
 const (
@@ -46,7 +46,7 @@ func ParsePublishState(s string) PublishState {
 	}
 }
 
-// BuildState mirrors appunvs.v1.BuildState.
+// BuildState mirrors appunvs.BuildState.
 type BuildState int32
 
 const (
@@ -88,7 +88,7 @@ func ParseBuildState(s string) BuildState {
 	}
 }
 
-// RuntimeKind mirrors appunvs.v1.RuntimeKind.
+// RuntimeKind mirrors appunvs.RuntimeKind.
 type RuntimeKind int32
 
 const (
@@ -115,7 +115,7 @@ func ParseRuntimeKind(s string) RuntimeKind {
 	}
 }
 
-// Box mirrors appunvs.v1.Box.
+// Box mirrors appunvs.Box.
 type Box struct {
 	BoxID            string       `json:"box_id,omitempty"`
 	Namespace        string       `json:"namespace,omitempty"`
@@ -128,7 +128,7 @@ type Box struct {
 	UpdatedAt        int64        `json:"updated_at,omitempty"`
 }
 
-// BundleRef mirrors appunvs.v1.BundleRef.
+// BundleRef mirrors appunvs.BundleRef.
 type BundleRef struct {
 	BoxID       string     `json:"box_id,omitempty"`
 	Version     string     `json:"version,omitempty"`
@@ -141,49 +141,49 @@ type BundleRef struct {
 	ExpiresAt   int64      `json:"expires_at,omitempty"`
 }
 
-// BoxCreateRequest mirrors appunvs.v1.BoxCreateRequest.
+// BoxCreateRequest mirrors appunvs.BoxCreateRequest.
 type BoxCreateRequest struct {
 	Title   string      `json:"title,omitempty"`
 	Runtime RuntimeKind `json:"runtime,omitempty"`
 }
 
-// BoxResponse mirrors appunvs.v1.BoxResponse.
+// BoxResponse mirrors appunvs.BoxResponse.
 type BoxResponse struct {
 	Box     Box        `json:"box"`
 	Current *BundleRef `json:"current,omitempty"`
 }
 
-// BoxListResponse mirrors appunvs.v1.BoxListResponse.
+// BoxListResponse mirrors appunvs.BoxListResponse.
 type BoxListResponse struct {
 	Boxes []Box `json:"boxes"`
 }
 
-// PairRequest mirrors appunvs.v1.PairRequest.
+// PairRequest mirrors appunvs.PairRequest.
 type PairRequest struct {
 	BoxID  string `json:"box_id,omitempty"`
 	TTLSec int32  `json:"ttl_sec,omitempty"`
 }
 
-// PairResponse mirrors appunvs.v1.PairResponse.
+// PairResponse mirrors appunvs.PairResponse.
 type PairResponse struct {
 	ShortCode string `json:"short_code,omitempty"`
 	ExpiresAt int64  `json:"expires_at,omitempty"`
 }
 
-// PairClaimRequest mirrors appunvs.v1.PairClaimRequest.
+// PairClaimRequest mirrors appunvs.PairClaimRequest.
 type PairClaimRequest struct {
 	DeviceID string   `json:"device_id,omitempty"`
 	Platform Platform `json:"platform,omitempty"`
 }
 
-// PairClaimResponse mirrors appunvs.v1.PairClaimResponse.
+// PairClaimResponse mirrors appunvs.PairClaimResponse.
 type PairClaimResponse struct {
 	BoxID          string     `json:"box_id,omitempty"`
 	Bundle         *BundleRef `json:"bundle,omitempty"`
 	NamespaceToken string     `json:"namespace_token,omitempty"`
 }
 
-// BoxVersionUpdate mirrors appunvs.v1.BoxVersionUpdate.
+// BoxVersionUpdate mirrors appunvs.BoxVersionUpdate.
 type BoxVersionUpdate struct {
 	BoxID  string     `json:"box_id,omitempty"`
 	Bundle *BundleRef `json:"bundle,omitempty"`

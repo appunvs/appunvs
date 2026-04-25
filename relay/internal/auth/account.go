@@ -144,7 +144,7 @@ func Register(d Deps) gin.HandlerFunc {
 }
 
 // deviceView is the on-the-wire shape for `MeResponse.devices`, matching
-// shared/proto/appunvs.proto's Device message.  Keys are snake_case and
+// shared/proto/*.proto's Device message.  Keys are snake_case and
 // timestamps are unix millis (0 when never seen).
 type deviceView struct {
 	ID        string `json:"id"`
@@ -154,7 +154,7 @@ type deviceView struct {
 	LastSeen  int64  `json:"last_seen"`
 }
 
-// meResponse matches appunvs.v1.MeResponse.
+// meResponse matches appunvs.MeResponse.
 type meResponse struct {
 	UserID    string       `json:"user_id"`
 	Email     string       `json:"email"`

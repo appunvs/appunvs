@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+// Cross-module enums and small primitives shared by every other proto
+// file.  Keep this file small and stable — anything here gets imported
+// transitively by the rest of the schema, so a change ripples widely.
+package appunvs;
+
+option go_package = "github.com/appunvs/appunvs/relay/internal/pb;pb";
+
+// Platform identifies the host environment of a device.
+enum Platform {
+  PLATFORM_UNSPECIFIED = 0;
+  PLATFORM_BROWSER     = 1;
+  PLATFORM_DESKTOP     = 2;
+  PLATFORM_MOBILE      = 3;
+}

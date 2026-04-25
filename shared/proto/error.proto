@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+// Error envelope.  Every 4xx/5xx response body conforms to this shape;
+// clients parse failed HTTP bodies into ErrorResponse to surface a
+// human-safe message regardless of which endpoint raised the error.
+package appunvs;
+
+option go_package = "github.com/appunvs/appunvs/relay/internal/pb;pb";
+
+message ErrorResponse {
+  string error = 1;
+}

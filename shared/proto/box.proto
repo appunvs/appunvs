@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+// Stage pipeline — Box (project unit), BundleRef (immutable build
+// output), publish flow, and the WS broadcast that tells subscribed
+// connectors a new bundle has landed.  Pairing lives in pair.proto.
+//
+// A Box is a provider-owned project whose AI-generated output is a RN
+// bundle.  The provider device edits via Chat, publishes a frozen
+// BundleRef, and shares it with connectors via a short-lived PairGrant.
+// The relay is the single source of truth for box state and pairing
+// codes; bundle bytes themselves live in object storage.
+package appunvs;
+
+option go_package = "github.com/appunvs/appunvs/relay/internal/pb;pb";
+
+// PublishState is the lifecycle of a Box's bundle.
+enum PublishState {
+  PUBLISH_STATE_UNSPECIFIED = 0;
+  PUBLISH_STATE_DRAFT       = 1;  // AI is editing; bundle may rebuild continuously
+  PUBLISH_STATE_PUBLISHED   = 2;  // current_version is stable, pairable to Stage
+  PUBLISH_STATE_ARCHIVED    = 3;  // provider retired the box; no new pairings
+}
+
+// BuildState is the sandbox pipeline status of a single BundleRef.
+enum BuildState {
+  BUILD_STATE_UNSPECIFIED = 0;
+  BUILD_STATE_QUEUED      = 1;
+  BUILD_STATE_RUNNING     = 2;
+  BUILD_STATE_SUCCEEDED   = 3;
+  BUILD_STATE_FAILED      = 4;
+}
+
+// RuntimeKind is the artifact shape the Stage runtime must load.
+// For v1 we only support RN_BUNDLE (Metro JS bundle + asset manifest).
+enum RuntimeKind {
+  RUNTIME_KIND_UNSPECIFIED = 0;
+  RUNTIME_KIND_RN_BUNDLE   = 1;
+}
+
+// Box is a single AI-authored RN app owned by a provider device within
+// a namespace. `current_version` points at the most recent BundleRef
+// whose build_state is SUCCEEDED.
+message Box {
+  string       box_id             = 1;
+  string       namespace          = 2;
+  string       provider_device_id = 3;
+  string       title              = 4;
+  RuntimeKind  runtime            = 5;
+  PublishState state              = 6;
+  string       current_version    = 7;   // empty until first successful build
+  int64        created_at         = 8;
+  int64        updated_at         = 9;
+}
+
+// BundleRef names a single immutable build output for a Box.  `uri` is
+// a relay-signed short-lived URL; clients MUST NOT cache it past
+// `expires_at`.  `content_hash` is the sha256 over the bundle payload,
+// used for integrity check on the runner side.
+message BundleRef {
+  string     box_id       = 1;
+  string     version      = 2;   // monotonic per box, assigned by relay
+  string     uri          = 3;   // pre-signed download URL
+  string     content_hash = 4;   // "sha256:<hex>"
+  int64      size_bytes   = 5;
+  BuildState build_state  = 6;
+  string     build_log    = 7;   // truncated stderr tail on FAILED; empty otherwise
+  int64      built_at     = 8;
+  int64      expires_at   = 9;
+}
+
+// POST /box
+message BoxCreateRequest {
+  string      title   = 1;
+  RuntimeKind runtime = 2;
+}
+
+// GET /box/:id   | POST /box  | POST /box/:id/publish
+message BoxResponse {
+  Box       box     = 1;
+  BundleRef current = 2;   // populated when box has any successful build
+}
+
+// GET /box
+message BoxListResponse {
+  repeated Box boxes = 1;
+}
+
+// POST /box/:id/publish  (no body — freezes the latest successful draft)
+message BoxPublishRequest {}
+
+// BoxVersionUpdate is broadcast over /ws to every connector currently
+// paired to a box whenever the provider publishes a new bundle.  The
+// runner should re-fetch `bundle.uri` and reload the Stage if
+// content_hash changed.
+message BoxVersionUpdate {
+  string    box_id = 1;
+  BundleRef bundle = 2;
+}

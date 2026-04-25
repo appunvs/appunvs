@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+// AI agent surface — turn-based chat with tool-calling.  AI lives
+// server-side; the client streams turns through the relay.  Each Chat
+// turn is a ChatTurnRequest that returns a stream of ChatTurnEvent
+// frames (tokens, tool calls, tool results, final / error).  The relay
+// proxies to the configured model provider and enforces namespace +
+// budget gates.  See docs/architecture.md for the agent loop, and
+// docs/providers.md for the provider registry consumed by the relay.
+package appunvs;
+
+option go_package = "github.com/appunvs/appunvs/relay/internal/pb;pb";
+
+// ChatTurnRequest is the body of POST /ai/turn.
+message ChatTurnRequest {
+  string              box_id      = 1;   // optional; when set the agent has fs tools scoped to this box
+  string              text        = 2;
+  repeated Attachment attachments = 3;
+}
+
+message Attachment {
+  string mime = 1;
+  bytes  data = 2;   // base64 on the wire
+  string name = 3;
+}
+
+// ChatTurnEvent is a single frame on the response stream.  Exactly one
+// of the oneof branches is set per frame.
+message ChatTurnEvent {
+  string turn_id = 1;
+  oneof kind {
+    TokenDelta   token     = 2;
+    ToolCall     tool_call = 3;
+    ToolResult   tool_res  = 4;
+    TurnFinished finished  = 5;
+    TurnError    error     = 6;
+  }
+}
+
+message TokenDelta   { string text = 1; }
+message ToolCall     { string call_id = 1; string name = 2; string args_json = 3; }
+message ToolResult   { string call_id = 1; string result_json = 2; bool   is_error = 3; }
+message TurnFinished { string stop_reason = 1; int64 tokens_in = 2; int64 tokens_out = 3; }
+message TurnError    { string error = 1; }

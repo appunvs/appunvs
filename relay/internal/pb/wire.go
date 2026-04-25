@@ -1,7 +1,7 @@
 // Package pb contains hand-written Go types that mirror the protobuf
-// definitions in shared/proto/appunvs.proto.
+// definitions in shared/proto/*.proto.
 //
-// TODO: shared/proto/appunvs.proto is the canonical source of truth for
+// TODO: shared/proto/*.proto is the canonical source of truth for
 // these types. If the proto changes, update this package by hand (or, later,
 // by running `buf generate`).  For this task we intentionally avoid protoc
 // so the relay has zero build-time codegen dependencies.
@@ -9,7 +9,7 @@ package pb
 
 import "strings"
 
-// Platform mirrors appunvs.v1.Platform.
+// Platform mirrors appunvs.Platform.
 type Platform int32
 
 const (
@@ -48,7 +48,7 @@ func ParsePlatform(s string) Platform {
 	}
 }
 
-// Role mirrors appunvs.v1.Role.
+// Role mirrors appunvs.Role.
 type Role int32
 
 const (
@@ -91,7 +91,7 @@ func (r Role) IsProvider() bool { return r == RoleProvider || r == RoleBoth }
 // IsConnector returns true if the role participates in connector fanout.
 func (r Role) IsConnector() bool { return r == RoleConnector || r == RoleBoth }
 
-// Op mirrors appunvs.v1.Op.
+// Op mirrors appunvs.Op.
 type Op int32
 
 const (
@@ -155,7 +155,7 @@ func ParseOp(s string) Op {
 	}
 }
 
-// Message mirrors appunvs.v1.Message.
+// Message mirrors appunvs.Message.
 // Payload is kept as raw JSON bytes because the relay treats it as opaque.
 type Message struct {
 	Seq       int64  `json:"seq,omitempty"`
@@ -171,13 +171,13 @@ type Message struct {
 	TS      int64  `json:"ts,omitempty"`
 }
 
-// RegisterRequest mirrors appunvs.v1.RegisterRequest (HTTP body).
+// RegisterRequest mirrors appunvs.RegisterRequest (HTTP body).
 type RegisterRequest struct {
 	DeviceID string `json:"device_id"`
 	Platform string `json:"platform"`
 }
 
-// RegisterResponse mirrors appunvs.v1.RegisterResponse.
+// RegisterResponse mirrors appunvs.RegisterResponse.
 type RegisterResponse struct {
 	Token  string `json:"token"`
 	UserID string `json:"user_id"`

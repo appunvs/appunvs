@@ -3,7 +3,7 @@
 所有端与 relay 之间使用统一 JSON 消息格式。术语定义见
 [conventions.md](conventions.md)；架构与组件拓扑见 [architecture.md](architecture.md)。
 
-**Schema 源**：[`shared/proto/appunvs.proto`](../shared/proto/appunvs.proto)。
+**Schema 源**：[`shared/proto/`](../shared/proto/) 下按模块拆分（`auth.proto`、`box.proto`、`pair.proto`、`sync.proto`、`ai.proto`、…）。
 所有语言的 wire 类型从 proto 生成或手工镜像，并由 drift test 守护一致。
 JSON 线上格式使用 canonical protojson（启用 `UseProtoNames`），字段名保持
 `snake_case`；枚举序列化为短名小写（`ROLE_PROVIDER → "provider"`、
