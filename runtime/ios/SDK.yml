@@ -6,16 +6,24 @@ options:
 
 targets:
   RuntimeSDK:
-    # Static framework: simpler than dynamic for an empty C-only SDK,
-    # and what most iOS SDK distributions ship as today (no @rpath
-    # complications, no separate dylib in the host bundle).  We can
-    # flip to `framework` (dynamic) once D2.c needs RN's dyld libs.
-    type: framework.static
+    # Dynamic framework now that we link against React Native's dyld
+    # libs (hermes-engine, React-Core, ReactCommon).  Static framework
+    # would force-bundle those libs into our SDK; dynamic links them
+    # at runtime from the host's pod-installed copies.
+    type: framework
     platform: iOS
     sources:
       - path: SDK
         excludes:
           - "**/.DS_Store"
+    # Pods xcconfig wired up by `pod install` after `npm install`.
+    # The .debug / .release xcconfigs set FRAMEWORK_SEARCH_PATHS,
+    # HEADER_SEARCH_PATHS, OTHER_LDFLAGS so the SDK target sees RN
+    # headers + links against hermes-engine.framework, React-Core,
+    # ReactCommon, etc.
+    configFiles:
+      Debug: Pods/Target Support Files/Pods-RuntimeSDK/Pods-RuntimeSDK.debug.xcconfig
+      Release: Pods/Target Support Files/Pods-RuntimeSDK/Pods-RuntimeSDK.release.xcconfig
     settings:
       base:
         PRODUCT_NAME: RuntimeSDK
@@ -23,3 +31,6 @@ targets:
         DEFINES_MODULE: YES
         BUILD_LIBRARY_FOR_DISTRIBUTION: YES
         SKIP_INSTALL: NO
+        # Allow non-modular includes — RN's headers (React-Core,
+        # ReactCommon, etc.) are still pre-modules in 0.85.
+        CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES: YES
