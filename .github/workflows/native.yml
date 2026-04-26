@@ -17,7 +17,7 @@ on:
 # comment so failures are visible without needing repo admin access to
 # the actions log download endpoint.  Requires write access to PRs.
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 concurrency:
@@ -209,6 +209,35 @@ jobs:
         run: |
           test -d runtime/build/ios/RuntimeSDK.xcframework
           ls -la runtime/build/ios/RuntimeSDK.xcframework
+
+      # One-shot: when CI generates a Podfile.lock that isn't yet
+      # tracked in git, commit it back to the PR branch so future runs
+      # have a stable hash to key Pods/ + CocoaPods caches against.
+      # Becomes a no-op the moment the lockfile lands.  Only this single
+      # job (runtime_sdk_ios) does it — having multiple iOS jobs all try
+      # to push concurrently would race.  Pushed commit re-triggers CI;
+      # the next run sees the lockfile tracked and skips this step.
+      - name: Seed Podfile.lock back to PR (one-shot)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          if [ ! -f runtime/ios/Podfile.lock ]; then
+            echo "no Podfile.lock generated, skipping"
+            exit 0
+          fi
+          if git ls-files --error-unmatch runtime/ios/Podfile.lock >/dev/null 2>&1; then
+            echo "Podfile.lock already tracked, skipping"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "${{ github.head_ref }}"
+          git checkout "${{ github.head_ref }}"
+          git add runtime/ios/Podfile.lock
+          git commit -m "chore(ci): seed Podfile.lock from CI"
+          git push origin "${{ github.head_ref }}"
 
       - name: Post failure log to PR
         if: failure() && github.event_name == 'pull_request'
