@@ -16,6 +16,7 @@
 #define RuntimeView_h
 
 #import <UIKit/UIKit.h>
+#import "RuntimeBoxIdentity.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -29,10 +30,21 @@ typedef void (^RuntimeViewLoadCompletion)(NSError *_Nullable error);
 /// the first loadBundleAtURL: call.  KVO-observable.
 @property (nonatomic, readonly, copy, nullable) NSURL *currentBundleURL;
 
+/// The Box identity currently mounted.  nil before the first
+/// loadBundleAtURL:identity: call.
+@property (nonatomic, readonly, strong, nullable) RuntimeBoxIdentity *currentIdentity;
+
 /// Asks the runtime to fetch the bundle at `url` and mount its React
-/// tree into this view's bounds.  Calling this while another bundle
-/// is loaded resets first.  D2.c placeholder: just stores the URL
-/// and displays it as text; D3 replaces with real Hermes mount.
+/// tree into this view's bounds.  `identity` is exposed to the JS
+/// runtime as `host().identity` (boxID / version / title).  Calling
+/// this while another bundle is loaded resets first.
+- (void)loadBundleAtURL:(NSURL *)url
+               identity:(RuntimeBoxIdentity *)identity
+             completion:(nullable RuntimeViewLoadCompletion)completion;
+
+/// Convenience overload that supplies an empty identity.  Provided so
+/// existing host call sites compile against the new SDK without a
+/// flag-day; new code should pass an explicit identity.
 - (void)loadBundleAtURL:(NSURL *)url
              completion:(nullable RuntimeViewLoadCompletion)completion;
 

@@ -18,9 +18,20 @@
 
 #import <React/RCTBridgeModule.h>
 
+@class RuntimeBoxIdentity;
+
 NS_ASSUME_NONNULL_BEGIN
 
 @interface AppunvsHostModule : NSObject <RCTBridgeModule>
+
+/// Stages identity into a static slot that the next module instance
+/// will pick up at constantsToExport time.  RuntimeView calls this
+/// BEFORE creating the RCTReactNativeFactory so the bridge's auto-
+/// instantiated AppunvsHostModule sees the right values.  Per-process
+/// (not per-bridge) — concurrent loadBundle calls would race; for D3.e.2
+/// only one RuntimeView mounts at a time, so this is safe.
++ (void)setPendingIdentity:(nullable RuntimeBoxIdentity *)identity;
+
 @end
 
 NS_ASSUME_NONNULL_END

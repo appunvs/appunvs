@@ -7,6 +7,14 @@
 // must continue to run on a newer host (and vice versa within the
 // supported window).
 #import "AppunvsHostModule.h"
+#import "RuntimeBoxIdentity.h"
+
+// Pending identity slot — RuntimeView calls +setPendingIdentity: before
+// it creates the RCTReactNativeFactory; the next AppunvsHostModule
+// instance reads from this slot at constantsToExport time.  Cleared on
+// read so a subsequent module without an explicit setPendingIdentity:
+// call sees the empty default.
+static RuntimeBoxIdentity *_pendingIdentity = nil;
 
 @implementation AppunvsHostModule
 
@@ -16,12 +24,24 @@
 // and a +load that calls RCTRegisterModule().
 RCT_EXPORT_MODULE(AppunvsHost)
 
++ (void)setPendingIdentity:(RuntimeBoxIdentity *)identity {
+    _pendingIdentity = identity;
+}
+
 // Constants are exposed once, when the module is initialised, and
-// available from JS as `NativeModules.AppunvsHost.sdkVersion`.  This is
-// the version of the SDK ABI itself, not of the host app or the bundle.
+// available from JS as `NativeModules.AppunvsHost.sdkVersion` /
+// `.identity`.  sdkVersion is the SDK ABI version (not host app, not
+// bundle).  identity mirrors `BoxIdentity` in HostBridge.ts.
 - (NSDictionary *)constantsToExport {
+    RuntimeBoxIdentity *identity = _pendingIdentity;
+    NSDictionary *identityDict = @{
+        @"boxID":   identity.boxID   ?: @"",
+        @"version": identity.version ?: @"",
+        @"title":   identity.title   ?: @"",
+    };
     return @{
         @"sdkVersion": @"0.1.0",
+        @"identity":   identityDict,
     };
 }
 

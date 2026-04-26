@@ -42,6 +42,12 @@ class RuntimeView @JvmOverloads constructor(
     var currentBundleURL: String? = null
         private set
 
+    /** The Box identity currently mounted.  null before the first
+     *  identity-bearing loadBundle call.
+     */
+    var currentIdentity: RuntimeBoxIdentity? = null
+        private set
+
     private var reactHost: ReactHostImpl? = null
 
     init {
@@ -50,8 +56,9 @@ class RuntimeView @JvmOverloads constructor(
 
     /**
      * Asks the runtime to fetch the bundle at [url] and mount its
-     * React tree into this view's bounds.  Calling this while another
-     * bundle is loaded resets first.
+     * React tree into this view's bounds.  [identity] is exposed to
+     * the JS runtime as `host().identity` (boxID / version / title).
+     * Calling this while another bundle is loaded resets first.
      *
      * [url] must be a `file://` URL pointing to a downloaded JS bundle
      * on disk.  D3.e will add direct http(s) support.
@@ -60,12 +67,25 @@ class RuntimeView @JvmOverloads constructor(
      * success.  Bundle-load errors surface via RN's red-box overlay
      * inside the mounted view; D3.e wires a real progress / error path.
      */
+    /** Backwards-compat overload — host call sites that don't yet
+     *  carry identity continue to compile.  Forwards to the
+     *  identity-bearing variant with [RuntimeBoxIdentity.EMPTY].
+     */
+    fun loadBundle(url: String, completion: ((Throwable?) -> Unit)?) {
+        loadBundle(url, RuntimeBoxIdentity.EMPTY, completion)
+    }
+
     @OptIn(UnstableReactNativeAPI::class)
     @JvmOverloads
-    fun loadBundle(url: String, completion: ((Throwable?) -> Unit)? = null) {
+    fun loadBundle(
+        url: String,
+        identity: RuntimeBoxIdentity = RuntimeBoxIdentity.EMPTY,
+        completion: ((Throwable?) -> Unit)? = null,
+    ) {
         reset()
 
         currentBundleURL = url
+        currentIdentity = identity
 
         val parsed = Uri.parse(url)
         require(parsed.scheme == "file") {
@@ -94,7 +114,10 @@ class RuntimeView @JvmOverloads constructor(
             // `@appunvs/host` imports have a real native target.  Tier 1
             // RN packages (reanimated etc.) auto-register at runtime via
             // their AAR's manifest entries; we don't list them here.
-            reactPackages = listOf(AppunvsHostPackage()),
+            // D3.e.2: identity propagates via the package's constructor
+            // — each per-RuntimeView ReactHost gets its own pinned-to-
+            // this-Box AppunvsHostModule.
+            reactPackages = listOf(AppunvsHostPackage(identity)),
             // Required as of RN 0.85.2 (the no-arg default was removed).
             // Empty builder is fine because reactPackages is empty too —
             // there are no turbo modules to register.
@@ -127,5 +150,6 @@ class RuntimeView @JvmOverloads constructor(
         reactHost?.destroy("RuntimeView.reset", null)
         reactHost = null
         currentBundleURL = null
+        currentIdentity = null
     }
 }
