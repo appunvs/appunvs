@@ -19,11 +19,10 @@
 
 #import <Foundation/Foundation.h>
 
-//! Project version number for RuntimeSDK.
-FOUNDATION_EXPORT double RuntimeSDKVersionNumber;
-
-//! Project version string for RuntimeSDK.
-FOUNDATION_EXPORT const unsigned char RuntimeSDKVersionString[];
+// NB: Xcode auto-generates RuntimeSDK_vers.c (from CURRENT_PROJECT_VERSION
+// + MARKETING_VERSION) which defines RuntimeSDKVersionNumber and
+// RuntimeSDKVersionString.  Don't redeclare them here — doing so makes
+// the linker collide RuntimeSDK_vers.o against this header's user.
 
 // Public surface: expose every header the host needs to import here so
 // `@import RuntimeSDK;` (Swift `import RuntimeSDK`) gets all of them
