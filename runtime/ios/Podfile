@@ -8,6 +8,13 @@ require Pod::Executable.execute_command('node', ['-p',
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
+# Tell cocoapods which xcworkspace to write/update.  Without this,
+# pod install can't auto-pick when two xcodeprojs (RuntimeSdk + the
+# generated AppunvsRuntimeSDK) live in the same directory.  The
+# workspace itself is created by the RN init's `npx init` and lives
+# at runtime/ios/RuntimeSdk.xcworkspace.
+workspace 'RuntimeSdk.xcworkspace'
+
 linkage = ENV['USE_FRAMEWORKS']
 if linkage != nil
   Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
