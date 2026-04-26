@@ -44,7 +44,7 @@ DEVICE_ARCHIVE="$OUT/RuntimeSDK-iphoneos.xcarchive"
 SIM_ARCHIVE="$OUT/RuntimeSDK-iphonesimulator.xcarchive"
 
 xcodebuild archive \
-  -project ios/AppunvsRuntimeSDK.xcodeproj \
+  -workspace ios/RuntimeSdk.xcworkspace \
   -scheme RuntimeSDK \
   -configuration Release \
   -destination "generic/platform=iOS" \
@@ -56,7 +56,7 @@ xcodebuild archive \
   CODE_SIGN_IDENTITY=""
 
 xcodebuild archive \
-  -project ios/AppunvsRuntimeSDK.xcodeproj \
+  -workspace ios/RuntimeSdk.xcworkspace \
   -scheme RuntimeSDK \
   -configuration Release \
   -destination "generic/platform=iOS Simulator" \
