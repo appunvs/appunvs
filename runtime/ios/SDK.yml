@@ -1,4 +1,11 @@
-name: RuntimeSDK
+# `name` becomes the .xcodeproj filename.  We avoid `RuntimeSDK`
+# (caps) because macOS's APFS is case-INSENSITIVE by default —
+# `RuntimeSDK.xcodeproj` and `RuntimeSdk.xcodeproj` (the RN init's
+# dev-harness app) hash to the same path and clobber each other.
+# The TARGET stays `RuntimeSDK` with PRODUCT_NAME=RuntimeSDK below,
+# so the framework binary still ships as RuntimeSDK.framework — only
+# the xcodeproj filename differs.
+name: AppunvsRuntimeSDK
 options:
   deploymentTarget:
     iOS: "16.0"

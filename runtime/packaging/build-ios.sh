@@ -38,13 +38,13 @@ echo "==> pod install (cocoapods + RN pods, including new RuntimeSDK target)"
 (cd ios && pod install --repo-update)
 
 echo "==> available schemes"
-xcodebuild -list -project ios/RuntimeSDK.xcodeproj || true
+xcodebuild -list -project ios/AppunvsRuntimeSDK.xcodeproj || true
 
 DEVICE_ARCHIVE="$OUT/RuntimeSDK-iphoneos.xcarchive"
 SIM_ARCHIVE="$OUT/RuntimeSDK-iphonesimulator.xcarchive"
 
 xcodebuild archive \
-  -project ios/RuntimeSDK.xcodeproj \
+  -project ios/AppunvsRuntimeSDK.xcodeproj \
   -scheme RuntimeSDK \
   -configuration Release \
   -destination "generic/platform=iOS" \
@@ -56,7 +56,7 @@ xcodebuild archive \
   CODE_SIGN_IDENTITY=""
 
 xcodebuild archive \
-  -project ios/RuntimeSDK.xcodeproj \
+  -project ios/AppunvsRuntimeSDK.xcodeproj \
   -scheme RuntimeSDK \
   -configuration Release \
   -destination "generic/platform=iOS Simulator" \

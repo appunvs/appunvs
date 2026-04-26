@@ -44,7 +44,10 @@ end
 # Build pipeline must run xcodegen BEFORE pod install so this xcodeproj
 # exists when cocoapods integrates the target.
 target 'RuntimeSDK' do
-  project 'RuntimeSDK.xcodeproj'
+  # AppunvsRuntimeSDK.xcodeproj — name avoids case collision with the
+  # RN init's RuntimeSdk.xcodeproj on macOS's case-insensitive APFS.
+  # Target inside the xcodeproj is still named RuntimeSDK.
+  project 'AppunvsRuntimeSDK.xcodeproj'
 
   config = use_native_modules!
 
