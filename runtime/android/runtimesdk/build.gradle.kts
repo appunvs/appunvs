@@ -55,4 +55,18 @@ dependencies {
     // Hermes engine — bundles libhermes.so per ABI (arm64-v8a /
     // armeabi-v7a / x86_64).  We run AI bundles inside this engine.
     implementation("com.facebook.react:hermes-android:0.85.2")
+
+    // Tier 1 native modules — see runtime/MODULES.md.  Each ships its
+    // own android library that the RN gradle plugin's autolinking
+    // (autolinkLibrariesFromCommand in runtime/android/settings.gradle)
+    // already includes as a `:react-native-X` project module.  We add
+    // them as implementation deps here so they're packaged inside
+    // runtime.aar and registered with the SDK's React runtime when the
+    // host app launches.
+    implementation(project(":react-native-reanimated"))
+    implementation(project(":react-native-gesture-handler"))
+    implementation(project(":react-native-screens"))
+    implementation(project(":react-native-safe-area-context"))
+    implementation(project(":react-native-svg"))
+    implementation(project(":react-native-mmkv"))
 }
