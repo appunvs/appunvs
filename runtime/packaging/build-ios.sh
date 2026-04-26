@@ -2,11 +2,17 @@
 # build-ios.sh — produces RuntimeSDK.xcframework, the artifact the host
 # iOS app (appunvs/ios/) links to mount AI bundles inside its Stage tab.
 #
-# D3.a (this PR): SDK lives inside the RN init project at runtime/ios/.
-# Empty-shell SDK still — D3.b adds the RN+Hermes deps that need
-# pod install.  Today's build is independent of the RN init's
-# xcworkspace; xcodebuild builds against the standalone SDK.xcodeproj
-# only.
+# D3.b (this PR): SDK now links React Native + Hermes via the same
+# Podfile that backs the dev-harness app.  Build flow:
+#
+#   1. npm install            (resolves react-native, @react-native/...)
+#   2. xcodegen generate      (produces RuntimeSDK.xcodeproj — must
+#                              exist before pod install can integrate)
+#   3. cd ios && pod install  (materializes Hermes, React-Core, etc.,
+#                              writes Pods-RuntimeSDK xcconfig that
+#                              RuntimeSDK.xcodeproj's configFiles point at)
+#   4. xcodebuild archive     (device + simulator slices)
+#   5. xcodebuild -create-xcframework
 #
 # Output: runtime/build/ios/RuntimeSDK.xcframework
 set -euo pipefail
@@ -16,11 +22,20 @@ cd "$(dirname "$0")/.."
 OUT="build/ios"
 mkdir -p "$OUT"
 
-echo "==> xcodegen --version"
-xcodegen --version || true
+echo "==> environment"
+echo "  node:   $(node --version 2>&1 || echo MISSING)"
+echo "  npm:    $(npm --version 2>&1 || echo MISSING)"
+echo "  pod:    $(pod --version 2>&1 || echo MISSING)"
+echo "  xcodegen: $(xcodegen --version 2>&1 || echo MISSING)"
+
+echo "==> npm install (RN init's package.json)"
+npm install --no-audit --no-fund --legacy-peer-deps 2>&1 | tail -20
 
 echo "==> xcodegen generate (ios/SDK.yml)"
 (cd ios && xcodegen generate --spec SDK.yml --project .)
+
+echo "==> pod install (cocoapods + RN pods, including new RuntimeSDK target)"
+(cd ios && pod install --repo-update)
 
 echo "==> available schemes"
 xcodebuild -list -project ios/RuntimeSDK.xcodeproj || true
