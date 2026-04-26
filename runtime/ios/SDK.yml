@@ -6,10 +6,9 @@ options:
 
 targets:
   RuntimeSDK:
-    # Static framework: simpler than dynamic for an empty C-only SDK,
-    # and what most iOS SDK distributions ship as today (no @rpath
-    # complications, no separate dylib in the host bundle).  We can
-    # flip to `framework` (dynamic) once D2.c needs RN's dyld libs.
+    # Static framework: simpler than dynamic for an empty C-only SDK.
+    # D3.b will flip to `framework` (dynamic) once we link RN's dyld
+    # libs (hermes-engine.framework etc.).
     type: framework.static
     platform: iOS
     sources:

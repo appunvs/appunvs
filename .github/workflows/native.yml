@@ -13,6 +13,13 @@ on:
       - 'runtime/**'
       - '.github/workflows/native.yml'
 
+# When a CI job fails on a PR, post the captured build log as a PR
+# comment so failures are visible without needing repo admin access to
+# the actions log download endpoint.  Requires write access to PRs.
+permissions:
+  contents: read
+  pull-requests: write
+
 concurrency:
   group: native-${{ github.ref }}
   cancel-in-progress: true
@@ -30,15 +37,13 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      # Build the runtime SDK first — appunvs/ios/project.yml links the
-      # XCFramework by relative path (../../runtime/build/ios/...).
-      # CI must produce that file before xcodegen runs.
       - name: Build RuntimeSDK.xcframework
-        run: bash runtime/packaging/build-ios.sh
+        id: sdk_build
+        run: bash runtime/packaging/build-ios.sh 2>&1 | tee /tmp/sdk-build.log
 
       - name: Generate Xcode project
         working-directory: appunvs/ios
-        run: xcodegen generate
+        run: xcodegen generate 2>&1 | tee /tmp/xcodegen.log
 
       - name: Build (Debug, simulator)
         working-directory: appunvs/ios
@@ -53,7 +58,28 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            build
+            build 2>&1 | tee /tmp/xcodebuild.log
+
+      - name: Post failure log to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### CI failure: \`${{ github.job }}\` on \`${{ github.head_ref }}\` @ \`${{ github.event.pull_request.head.sha }}\`"
+            echo ""
+            for log in /tmp/sdk-build.log /tmp/xcodegen.log /tmp/xcodebuild.log; do
+              if [ -f "$log" ]; then
+                echo ""
+                echo "**$(basename $log)** (last 120 lines)"
+                echo ""
+                echo '```'
+                tail -500 "$log"
+                echo '```'
+              fi
+            done
+          } > /tmp/comment.md
+          gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md
 
   android:
     name: appunvs/android (Gradle)
@@ -67,9 +93,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # ubuntu-24.04 ships with Android SDK pre-installed at
-      # $ANDROID_HOME (= $ANDROID_SDK_ROOT).  Verify the components AGP
-      # 8.7 + compileSdk 35 needs are present; install if not.
       - name: Ensure Android SDK 35
         run: |
           set -e
@@ -84,20 +107,38 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Build the runtime SDK first — appunvs/android links runtime.aar
-      # by relative path (../../runtime/build/android/runtime.aar).
-      # CI must produce that file before this gradle invocation.
       - name: Build runtime.aar
-        run: bash runtime/packaging/build-android.sh
+        run: bash runtime/packaging/build-android.sh 2>&1 | tee /tmp/sdk-build.log
 
       - name: Build debug APK
         working-directory: appunvs/android
         run: |
           gradle --version
-          gradle assembleDebug --stacktrace --info --no-daemon
+          gradle assembleDebug --stacktrace --info --no-daemon 2>&1 | tee /tmp/gradle-host.log
+
+      - name: Post failure log to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### CI failure: \`${{ github.job }}\` on \`${{ github.head_ref }}\` @ \`${{ github.event.pull_request.head.sha }}\`"
+            echo ""
+            for log in /tmp/sdk-build.log /tmp/gradle-host.log; do
+              if [ -f "$log" ]; then
+                echo ""
+                echo "**$(basename $log)** (last 120 lines)"
+                echo ""
+                echo '```'
+                tail -500 "$log"
+                echo '```'
+              fi
+            done
+          } > /tmp/comment.md
+          gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md
 
   runtime_sdk_ios:
-    name: runtime/sdk/ios (Framework)
+    name: runtime SDK iOS (Framework)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -109,15 +150,33 @@ jobs:
         run: brew install xcodegen
 
       - name: Build RuntimeSDK.xcframework
-        run: bash runtime/packaging/build-ios.sh
+        run: bash runtime/packaging/build-ios.sh 2>&1 | tee /tmp/sdk-build.log
 
       - name: Verify artifact
         run: |
           test -d runtime/build/ios/RuntimeSDK.xcframework
           ls -la runtime/build/ios/RuntimeSDK.xcframework
 
+      - name: Post failure log to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### CI failure: \`${{ github.job }}\` on \`${{ github.head_ref }}\` @ \`${{ github.event.pull_request.head.sha }}\`"
+            echo ""
+            if [ -f /tmp/sdk-build.log ]; then
+              echo "**sdk-build.log** (last 120 lines)"
+              echo ""
+              echo '```'
+              tail -500 /tmp/sdk-build.log
+              echo '```'
+            fi
+          } > /tmp/comment.md
+          gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md
+
   runtime_sdk_android:
-    name: runtime/sdk/android (Library)
+    name: runtime SDK Android (Library)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -141,9 +200,27 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build runtime.aar
-        run: bash runtime/packaging/build-android.sh
+        run: bash runtime/packaging/build-android.sh 2>&1 | tee /tmp/sdk-build.log
 
       - name: Verify artifact
         run: |
           test -f runtime/build/android/runtime.aar
           ls -la runtime/build/android/runtime.aar
+
+      - name: Post failure log to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### CI failure: \`${{ github.job }}\` on \`${{ github.head_ref }}\` @ \`${{ github.event.pull_request.head.sha }}\`"
+            echo ""
+            if [ -f /tmp/sdk-build.log ]; then
+              echo "**sdk-build.log** (last 120 lines)"
+              echo ""
+              echo '```'
+              tail -500 /tmp/sdk-build.log
+              echo '```'
+            fi
+          } > /tmp/comment.md
+          gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md

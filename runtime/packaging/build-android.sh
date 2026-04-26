@@ -2,16 +2,15 @@
 # build-android.sh — produces runtime.aar, the artifact the host Android
 # app (appunvs/android/) links to mount AI bundles inside its Stage tab.
 #
-# D2.a (this PR): builds the empty-shell library that exposes one method
-# — `RuntimeSDK.hello()`.  Pure kotlin, no RN, no Hermes, no JNI.
-# Proves the gradle → AAR → host-link chain works.
+# D3.a (this PR): SDK module lives inside the RN init project at
+# runtime/android/runtimesdk/ (was at runtime/sdk/android/runtimesdk/).
+# RN init's settings.gradle requires npm install to materialize
+# @react-native/gradle-plugin under node_modules/ before gradle can
+# even parse settings.gradle.
 #
-# D2.c will:
-#   * link Hermes engine (libhermes.so per ABI: arm64-v8a, armeabi-v7a, x86_64)
-#   * link React Native's C++ runtime (libreact_render*.so)
-#   * link the curated Tier 1 native modules (see ../MODULES.md)
-#   * widen the SDK surface to RuntimeView (loadBundle/reset)
-#   * ship consumer ProGuard keep-rules for the JNI surface
+# D3.b will start using react-android / hermes-android from this
+# module, which is why the migration to the RN init project is the
+# right home now.
 #
 # Output: runtime/build/android/runtime.aar
 set -euo pipefail
@@ -21,12 +20,36 @@ cd "$(dirname "$0")/.."
 OUT="build/android"
 mkdir -p "$OUT"
 
-# Use the standalone gradle project under sdk/android/ — see its
-# settings.gradle.kts for why this isn't a sibling of the dev-harness
-# `runtime/android/` project.
-(cd sdk/android && gradle :runtimesdk:assembleRelease --no-daemon)
+# 1. npm install — needed because runtime/android/settings.gradle pulls
+#    @react-native/gradle-plugin from ../node_modules/.  Without this,
+#    `gradle :runtimesdk:assembleRelease` errors during settings parse.
+#    --no-audit + --no-fund speeds up CI; --legacy-peer-deps tolerates
+#    RN's deeply-nested peer deps that strict npm 7+ would reject.
+echo "==> environment"
+echo "  node:    $(node --version 2>&1 || echo MISSING)"
+echo "  npm:     $(npm --version 2>&1 || echo MISSING)"
+echo "  java:    $(java -version 2>&1 | head -1 || echo MISSING)"
+echo "  gradle:  $(gradle --version 2>&1 | head -1 || echo MISSING)"
+echo "  ANDROID_HOME=${ANDROID_HOME:-unset}"
+ls "${ANDROID_HOME:-/nope}/platforms" 2>&1 | head -3 || echo "  (no platforms dir)"
 
-AAR="sdk/android/runtimesdk/build/outputs/aar/runtimesdk-release.aar"
+echo "==> npm install (for @react-native/gradle-plugin)"
+npm install --no-audit --no-fund --legacy-peer-deps 2>&1 | tail -20
+
+echo "==> verify @react-native/gradle-plugin is on disk"
+ls -la node_modules/@react-native/gradle-plugin 2>&1 | head -5 || echo "MISSING — settings.gradle parsing will fail"
+
+# assembleRelease the runtimesdk module.  app module isn't built —
+# it'd require an extra Hermes/JSC ABI download and we don't ship
+# the dev-harness app as a build artifact.
+echo "==> ./gradlew :runtimesdk:assembleRelease (using wrapper-pinned 9.3.1)"
+# Use the wrapper rather than the system `gradle` — wrapper pins the
+# version (9.3.1) that the RN 0.85.2 init was tested against. System
+# gradle (9.4.x via setup-gradle@v4) triggered "Internal compiler
+# error" inside Kotlin 2.1.20.
+(cd android && chmod +x gradlew && ./gradlew :runtimesdk:assembleRelease --stacktrace --no-daemon)
+
+AAR="android/runtimesdk/build/outputs/aar/runtimesdk-release.aar"
 if [ ! -f "$AAR" ]; then
   echo "[build-android] expected AAR at $AAR but it's missing" >&2
   exit 1
