@@ -2,8 +2,7 @@
 // app injects into every AI bundle's SubRuntime.
 //
 // AI bundles `import { ... } from '@appunvs/host'` to reach these.
-// The host side registers each function as a JSI binding when it spawns
-// a SubRuntime; the metro sandbox config (sandbox/metro.config.js) lists
+// The metro sandbox config (sandbox/metro.config.js) lists
 // `@appunvs/host` as an external so bundle build doesn't try to find a
 // real package.
 //
@@ -12,10 +11,16 @@
 //
 // See MODULES.md for the full module allowlist (Tier 1 / 2 / 3 / Forbidden).
 //
-// NOTE: today this is a typing surface only — the native-side bindings
-// land in PR D2 (SubRuntime native module).  AI bundles can `import` it,
-// but at dev time inside the runtime harness the import resolves to the
-// `__stub` below.
+// D3.e.1 wiring: when running inside RuntimeView, the SDK registers a
+// native module called `AppunvsHost` (see runtime/ios/SDK/AppunvsHostModule.mm
+// and runtime/android/runtimesdk/src/main/java/.../AppunvsHostModule.kt).
+// `host()` below detects it via `NativeModules.AppunvsHost` and returns a
+// bridge that surfaces native-side data (today: sdkVersion only).
+// Storage / network / publish remain stubbed-but-rejecting until D3.e.{3,4,5}.
+//
+// In environments without the native module (web preview, jest, the
+// runtime harness), `host()` falls back to the dev stub at the bottom
+// of this file.
 
 export interface BoxIdentity {
   /** Stable per-Box id assigned by the relay. */
@@ -64,14 +69,66 @@ declare global {
   var __APPUNVS__: HostBridge | undefined;
 }
 
-/** Dev-time stub.  Returns the live host bridge when present, otherwise
- *  a no-op stand-in so the runtime harness can render without crashing. */
+// Lazy-required so this module is safe to import in non-RN environments
+// (jest, web preview, ssr): the require itself doesn't resolve unless
+// `host()` actually executes the lookup branch.
+function nativeAppunvsHost():
+  | { sdkVersion: string; echo(message: string): Promise<string> }
+  | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { NativeModules } = require('react-native') as {
+      NativeModules: Record<string, unknown>;
+    };
+    const mod = NativeModules?.AppunvsHost;
+    if (mod && typeof (mod as { sdkVersion?: unknown }).sdkVersion === 'string') {
+      return mod as { sdkVersion: string; echo(message: string): Promise<string> };
+    }
+  } catch {
+    // react-native not available — fall through to dev stub.
+  }
+  return null;
+}
+
+/** Returns the host bridge: from globalThis.__APPUNVS__ when an upstream
+ *  has set one, otherwise from the AppunvsHost native module when running
+ *  inside RuntimeView, otherwise from the in-process dev stub. */
 export function host(): HostBridge {
   if (globalThis.__APPUNVS__) {
     return globalThis.__APPUNVS__;
   }
+  const native = nativeAppunvsHost();
+  if (native) {
+    // D3.e.1: only sdkVersion is wired through to native today.  identity,
+    // storage, network, publish all stay on the stub — but storage/network/
+    // publish throw rather than no-op so AI bundles fail loudly if they
+    // try to use a surface before D3.e.{3,4,5} ships it.
+    return {
+      ...__stub,
+      sdkVersion: native.sdkVersion,
+      storage: __unimplementedStorage,
+      network: __unimplementedNetwork,
+      publish: __unimplementedPublish,
+    };
+  }
   return __stub;
 }
+
+const __unimplementedStorage: SubStorage = {
+  async getString() { throw new Error('SubStorage not implemented yet (D3.e.3)'); },
+  async setString() { throw new Error('SubStorage not implemented yet (D3.e.3)'); },
+  async remove() { throw new Error('SubStorage not implemented yet (D3.e.3)'); },
+  async keys() { throw new Error('SubStorage not implemented yet (D3.e.3)'); },
+};
+
+const __unimplementedNetwork: SubNetwork = {
+  async request() { throw new Error('SubNetwork not implemented yet (D3.e.4)'); },
+  async subscribe() { throw new Error('SubNetwork not implemented yet (D3.e.4)'); },
+};
+
+const __unimplementedPublish: SubPublish = {
+  async publish() { throw new Error('SubPublish not implemented yet (D3.e.5)'); },
+};
 
 const __stub: HostBridge = {
   identity: { boxID: 'box_dev', version: '', title: 'dev harness' },
