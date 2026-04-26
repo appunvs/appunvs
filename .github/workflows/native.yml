@@ -317,6 +317,33 @@ jobs:
           grep -q 'RuntimeRoot' runtime/build/fixture/ios/RuntimeRoot.jsbundle
           grep -q 'RuntimeRoot' runtime/build/fixture/android/RuntimeRoot.jsbundle
 
+      - name: Sandbox bundle smoke (@appunvs/host resolver)
+        # Bundles runtime/sandbox/fixture-host-import/index.tsx through
+        # sandbox/metro.config.js — exercises the resolveRequest shim
+        # that maps the bare specifier '@appunvs/host' onto
+        # runtime/src/HostBridge.ts.  The fixture imports + uses
+        # host().sdkVersion at render time so the bridge code can't be
+        # tree-shaken away.  Produces build/sandbox/HostImport.jsbundle.
+        working-directory: runtime
+        run: |
+          set -o pipefail
+          mkdir -p build/sandbox
+          npx --no-install react-native bundle \
+            --config sandbox/metro.config.js \
+            --entry-file sandbox/fixture-host-import/index.tsx \
+            --platform ios \
+            --dev false \
+            --minify false \
+            --bundle-output build/sandbox/HostImport.jsbundle 2>&1 \
+            | tee /tmp/sandbox-bundle.log
+          # The bridge dev-stub string is unique to runtime/src/HostBridge.ts —
+          # if the resolver mapped @appunvs/host to the right file, this
+          # string ends up in the bundle.
+          grep -q 'SubStorage not implemented yet' \
+            build/sandbox/HostImport.jsbundle
+          # And the registered fixture component name.
+          grep -q 'host-import-root' build/sandbox/HostImport.jsbundle
+
       - name: Post failure log to PR
         if: failure() && github.event_name == 'pull_request'
         env:
@@ -325,12 +352,15 @@ jobs:
           {
             echo "### CI failure: \`${{ github.job }}\` on \`${{ github.head_ref }}\` @ \`${{ github.event.pull_request.head.sha }}\`"
             echo ""
-            if [ -f /tmp/fixture-build.log ]; then
-              echo "**fixture-build.log** (last 120 lines)"
-              echo ""
-              echo '```'
-              tail -500 /tmp/fixture-build.log
-              echo '```'
-            fi
+            for log in /tmp/fixture-build.log /tmp/sandbox-bundle.log; do
+              if [ -f "$log" ]; then
+                echo ""
+                echo "**$(basename $log)** (last 120 lines)"
+                echo ""
+                echo '```'
+                tail -500 "$log"
+                echo '```'
+              fi
+            done
           } > /tmp/comment.md
           gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md
