@@ -40,23 +40,25 @@ target 'RuntimeSdk' do
       :mac_catalyst_enabled => false,
     )
 
-    # Strip "[CP] Copy Pods Resources" from the RuntimeSDK framework
-    # target (lives in AppunvsRuntimeSDK.xcodeproj).  CocoaPods generates
-    # that phase listing resources from every pod the target's xcconfig
-    # references — including native-module bundles (RNSVG/RNSVGFilters.bundle,
-    # etc.) that we deliberately don't link.  Archive fails because those
-    # bundles aren't built for the framework target's BUILT_PRODUCTS_DIR.
-    # Host apps bundle their own resources, so this phase is dead weight
-    # for a brownfield framework.
-    require 'xcodeproj'
-    sdk_project = Xcodeproj::Project.open('AppunvsRuntimeSDK.xcodeproj')
-    sdk_project.targets.each do |t|
-      next unless t.name == 'RuntimeSDK'
-      t.build_phases.delete_if do |phase|
-        phase.respond_to?(:name) && phase.name == '[CP] Copy Pods Resources'
-      end
+    # No-op the "Copy Pods Resources" script for the RuntimeSDK framework.
+    # CocoaPods generates Pods-RuntimeSDK-resources.sh listing resource
+    # bundles from every pod the target's xcconfig references — including
+    # native-module bundles (RNSVG/RNSVGFilters.bundle etc.) we deliberately
+    # don't link.  Archive fails because those bundles aren't built into
+    # the framework target's BUILT_PRODUCTS_DIR.  Host apps bundle their
+    # own resources, so for a brownfield framework this phase is dead
+    # weight.  Overwriting the script (rather than editing the xcodeproj)
+    # is robust against pod install regenerating phases on every run.
+    resources_sh = File.join(
+      Pod::Config.instance.installation_root,
+      'Pods/Target Support Files/Pods-RuntimeSDK/Pods-RuntimeSDK-resources.sh',
+    )
+    if File.exist?(resources_sh)
+      File.write(resources_sh, "#!/bin/sh\n# disabled by Podfile post_install — host app bundles its own resources\nexit 0\n")
+      Pod::UI.puts "  no-opped #{resources_sh}".green
+    else
+      Pod::UI.puts "  WARN: expected #{resources_sh} not found".yellow
     end
-    sdk_project.save
   end
 end
 
