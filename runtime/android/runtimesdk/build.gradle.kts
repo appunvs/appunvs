@@ -1,13 +1,9 @@
 // Runtime SDK Android library module.  Lives inside the RN init's
-// gradle project so it can pick up the RN gradle plugin + the
-// react-android / hermes-android artifacts when D3.b adds them.
+// gradle project so it can pick up react-android + hermes-android.
 //
-// The plugin classpaths come from the root build.gradle's
-// `buildscript { dependencies { classpath(...) } }` — no need to
-// repeat versions here.
-//
-// D3.a empty shell: pure kotlin library, no RN deps.  D3.b adds the
-// react-android + hermes-android implementation deps.
+// D3.b: declares the React Native + Hermes deps that the SDK needs
+// to compile + link against.  RuntimeView impl in this PR is still
+// the placeholder from D2.c — D3.c starts using these deps.
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
@@ -41,4 +37,22 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+// Module-level repositories — required because RN init's settings.gradle
+// doesn't centralize repos via dependencyResolutionManagement.
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    // React Native runtime — gives ReactHost, JSI, the Fabric C++
+    // surface.  Published to mavenCentral as of RN 0.71+.  Pinned to
+    // RN 0.85.2 to match runtime/package.json.
+    implementation("com.facebook.react:react-android:0.85.2")
+
+    // Hermes engine — bundles libhermes.so per ABI (arm64-v8a /
+    // armeabi-v7a / x86_64).  We run AI bundles inside this engine.
+    implementation("com.facebook.react:hermes-android:0.85.2")
 }
