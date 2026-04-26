@@ -21,6 +21,15 @@ function HostImportRoot() {
   // away.  Inside RuntimeView, host().sdkVersion + host().identity come
   // from the native AppunvsHostModule's constantsToExport.
   const bridge = host();
+
+  // Exercises D3.e.3 storage path through the bundler — assigning
+  // host().storage to a const forces metro to keep the MMKV-backed code
+  // path in the bundle.  No actual call here (storage is async + would
+  // need useEffect); the build-time grep is enough to assert that the
+  // bridge surface includes storage.
+  const _storage = bridge.storage;
+  void _storage;
+
   return (
     <View style={styles.container} testID="host-import-root">
       <Text style={styles.text} testID="host-import-sdk-version">

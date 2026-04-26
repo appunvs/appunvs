@@ -15,8 +15,13 @@
 // native module called `AppunvsHost` (see runtime/ios/SDK/AppunvsHostModule.mm
 // and runtime/android/runtimesdk/src/main/java/.../AppunvsHostModule.kt).
 // `host()` below detects it via `NativeModules.AppunvsHost` and returns a
-// bridge that surfaces native-side data (today: sdkVersion only).
-// Storage / network / publish remain stubbed-but-rejecting until D3.e.{3,4,5}.
+// bridge that surfaces native-side data.
+// D3.e.2: identity flowed through loadBundle into the module's constants.
+// D3.e.3 (this PR): storage real impl — backed by react-native-mmkv with
+//   a per-box namespace via MMKV's `id` parameter.  AI bundles can't reach
+//   another box's storage because the namespace ID is derived from the
+//   identity native handed us, which the bundle can read but not write.
+// D3.e.{4,5}: network + publish still pending.
 //
 // In environments without the native module (web preview, jest, the
 // runtime harness), `host()` falls back to the dev stub at the bottom
@@ -98,6 +103,50 @@ function asString(x: unknown): string {
   return typeof x === 'string' ? x : '';
 }
 
+// MMKV-backed SubStorage scoped to a single box.  MMKV ships with the
+// SDK as a Tier 1 native module (see runtime/MODULES.md) so it's
+// available whenever we're inside a RuntimeView.  `id` parameter
+// gives us a separate file per Box — AI bundle has no API for picking
+// a different namespace, since the boxID derives from the identity
+// native handed us as a read-only constant.
+//
+// Lazy-required so jest / web preview / non-RN environments can still
+// load this module without a `react-native-mmkv` import resolving.
+function makeMmkvStorage(boxID: string): SubStorage | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('react-native-mmkv') as {
+      MMKV: new (cfg: { id: string }) => MMKVLike;
+    };
+    const store = new mod.MMKV({ id: `appunvs-box-${boxID || 'dev'}` });
+    return {
+      async getString(key) {
+        return store.getString(key) ?? null;
+      },
+      async setString(key, value) {
+        store.set(key, value);
+      },
+      async remove(key) {
+        store.delete(key);
+      },
+      async keys() {
+        return store.getAllKeys();
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Subset of the MMKV instance API we use.  Avoids a hard import-time
+// dependency on react-native-mmkv's types in non-RN environments.
+interface MMKVLike {
+  getString(key: string): string | undefined;
+  set(key: string, value: string): void;
+  delete(key: string): void;
+  getAllKeys(): string[];
+}
+
 /** Returns the host bridge: from globalThis.__APPUNVS__ when an upstream
  *  has set one, otherwise from the AppunvsHost native module when running
  *  inside RuntimeView, otherwise from the in-process dev stub. */
@@ -108,20 +157,23 @@ export function host(): HostBridge {
   const native = nativeAppunvsHost();
   if (native) {
     // D3.e.1: sdkVersion + smoke methods.
-    // D3.e.2: identity now flows through native too — RuntimeView
+    // D3.e.2: identity flows through native too — RuntimeView
     // staged it before bridge init, AppunvsHostModule exposed it as a
-    // constant.  Storage / network / publish still stubbed-but-rejecting
-    // until D3.e.{3,4,5}.
+    // constant.
+    // D3.e.3: storage backed by MMKV scoped to identity.boxID.
+    // Network / publish still stubbed-but-rejecting until D3.e.{4,5}.
     const id = native.identity ?? {};
+    const identity = {
+      boxID:   asString(id.boxID),
+      version: asString(id.version),
+      title:   asString(id.title),
+    };
+    const storage = makeMmkvStorage(identity.boxID) ?? __unimplementedStorage;
     return {
       ...__stub,
       sdkVersion: native.sdkVersion,
-      identity: {
-        boxID:   asString(id.boxID),
-        version: asString(id.version),
-        title:   asString(id.title),
-      },
-      storage: __unimplementedStorage,
+      identity,
+      storage,
       network: __unimplementedNetwork,
       publish: __unimplementedPublish,
     };
@@ -129,11 +181,15 @@ export function host(): HostBridge {
   return __stub;
 }
 
+// Defensive fallback when react-native-mmkv require fails inside a
+// RuntimeView SubRuntime — should be unreachable in practice (MMKV is
+// pinned in runtime/package.json + linked via D3.d) but better to fail
+// loud than no-op silently and let the AI bundle read/write nothing.
 const __unimplementedStorage: SubStorage = {
-  async getString() { throw new Error('SubStorage not implemented yet (D3.e.3)'); },
-  async setString() { throw new Error('SubStorage not implemented yet (D3.e.3)'); },
-  async remove() { throw new Error('SubStorage not implemented yet (D3.e.3)'); },
-  async keys() { throw new Error('SubStorage not implemented yet (D3.e.3)'); },
+  async getString() { throw new Error('SubStorage unavailable: react-native-mmkv failed to load'); },
+  async setString() { throw new Error('SubStorage unavailable: react-native-mmkv failed to load'); },
+  async remove() { throw new Error('SubStorage unavailable: react-native-mmkv failed to load'); },
+  async keys() { throw new Error('SubStorage unavailable: react-native-mmkv failed to load'); },
 };
 
 const __unimplementedNetwork: SubNetwork = {

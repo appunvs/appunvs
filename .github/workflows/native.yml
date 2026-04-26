@@ -365,11 +365,11 @@ jobs:
             --minify false \
             --bundle-output build/sandbox/HostImport.jsbundle 2>&1 \
             | tee /tmp/sandbox-bundle.log
-          # The bridge dev-stub string is unique to runtime/src/HostBridge.ts —
-          # if the resolver mapped @appunvs/host to the right file, this
-          # string ends up in the bundle.
-          grep -q 'SubStorage not implemented yet' \
-            build/sandbox/HostImport.jsbundle
+          # The MMKV namespace prefix is unique to runtime/src/HostBridge.ts's
+          # makeMmkvStorage() — proves the resolver mapped @appunvs/host
+          # to the right file AND that the D3.e.3 storage code path made it
+          # into the bundle (no tree-shake).
+          grep -q 'appunvs-box-' build/sandbox/HostImport.jsbundle
           # And the registered fixture component name.
           grep -q 'host-import-root' build/sandbox/HostImport.jsbundle
 
