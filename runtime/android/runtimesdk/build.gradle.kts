@@ -64,6 +64,10 @@ dependencies {
     // runtime.aar and registered with the SDK's React runtime when the
     // host app launches.
     implementation(project(":react-native-reanimated"))
+    // react-native-worklets is reanimated 4's mandatory peer (split out
+    // of the reanimated package itself); the gradle plugin autolinks it
+    // as :react-native-worklets when reanimated 4 is in dependencies.
+    implementation(project(":react-native-worklets"))
     implementation(project(":react-native-gesture-handler"))
     implementation(project(":react-native-screens"))
     implementation(project(":react-native-safe-area-context"))
