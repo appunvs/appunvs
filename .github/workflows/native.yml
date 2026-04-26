@@ -224,3 +224,44 @@ jobs:
             fi
           } > /tmp/comment.md
           gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md
+
+  fixture_bundle:
+    name: runtime fixture bundle
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build fixture bundle
+        run: bash runtime/packaging/build-fixture.sh 2>&1 | tee /tmp/fixture-build.log
+
+      - name: Verify artifacts
+        run: |
+          test -f runtime/build/fixture/ios/RuntimeRoot.jsbundle
+          test -f runtime/build/fixture/android/RuntimeRoot.jsbundle
+          # The fixture must register "RuntimeRoot", otherwise RuntimeView
+          # mounts an empty surface and D3.c.4 UI tests silently pass.
+          # Grep for the registration string before declaring success.
+          grep -q 'RuntimeRoot' runtime/build/fixture/ios/RuntimeRoot.jsbundle
+          grep -q 'RuntimeRoot' runtime/build/fixture/android/RuntimeRoot.jsbundle
+
+      - name: Post failure log to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### CI failure: \`${{ github.job }}\` on \`${{ github.head_ref }}\` @ \`${{ github.event.pull_request.head.sha }}\`"
+            echo ""
+            if [ -f /tmp/fixture-build.log ]; then
+              echo "**fixture-build.log** (last 120 lines)"
+              echo ""
+              echo '```'
+              tail -500 /tmp/fixture-build.log
+              echo '```'
+            fi
+          } > /tmp/comment.md
+          gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md
