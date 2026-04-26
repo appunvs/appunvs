@@ -35,15 +35,35 @@ const ALLOWED_MODULES = new Set([
   'react-native-worklets',
   'react-native-svg',
   'react-native-mmkv',
-  // The host bridge — resolved at runtime by the SubRuntime native
-  // module, not by metro.
+  // The host bridge — resolved at metro time to the in-tree TypeScript
+  // surface (runtime/src/HostBridge.ts).  At RUNTIME inside a SubRuntime
+  // its `host()` impl reads from `NativeModules.AppunvsHost` (D3.e.1+);
+  // outside RuntimeView it falls back to the dev stub also in that file.
   '@appunvs/host',
 ]);
+
+// Where the @appunvs/host bare specifier resolves to.  The contract
+// lives in runtime/src/HostBridge.ts (typing surface + dev stub +
+// NativeModules-backed live impl); metro maps the specifier here so
+// AI bundles can `import { host } from '@appunvs/host'` without us
+// publishing a real package.
+const APPUNVS_HOST_FILE = path.resolve(
+  __dirname,
+  '..',
+  'src',
+  'HostBridge.ts',
+);
 
 const config = {
   resolver: {
     // Treat every non-allowlisted bare import as missing.
     resolveRequest: (context, moduleName, platform) => {
+      // Map the host-bridge specifier to the in-tree TS file.  Done before
+      // the allowlist check so the rest of the function doesn't have to
+      // special-case the @-scoped package against a real node_modules path.
+      if (moduleName === '@appunvs/host') {
+        return { type: 'sourceFile', filePath: APPUNVS_HOST_FILE };
+      }
       const isRelative = moduleName.startsWith('./') || moduleName.startsWith('../');
       const isAbsolute = path.isAbsolute(moduleName);
       if (isRelative || isAbsolute) {
