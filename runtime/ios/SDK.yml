@@ -16,15 +16,13 @@ targets:
       - path: SDK
         excludes:
           - "**/.DS_Store"
-    # Pods xcconfig wired up by `pod install` AFTER xcodegen has created
-    # this xcodeproj.  The .debug / .release xcconfigs set
-    # FRAMEWORK_SEARCH_PATHS, HEADER_SEARCH_PATHS, OTHER_LDFLAGS so the
-    # SDK target sees RN headers + links against hermes-engine.framework,
-    # React-Core, ReactCommon, etc.  Files don't need to exist at
-    # xcodegen time — just at xcodebuild time.
-    configFiles:
-      Debug: Pods/Target Support Files/Pods-RuntimeSDK/Pods-RuntimeSDK.debug.xcconfig
-      Release: Pods/Target Support Files/Pods-RuntimeSDK/Pods-RuntimeSDK.release.xcconfig
+    # No `configFiles:` — XcodeGen validates those paths exist at
+    # generate time, but Pods xcconfigs don't exist until `pod install`
+    # runs (which happens AFTER xcodegen, since pod install needs the
+    # xcodeproj to integrate the target).  pod install will modify
+    # the generated xcodeproj's BASE_CONFIGURATION_REFERENCE for each
+    # build configuration to point at the right xcconfig — that's its
+    # default behaviour for any target it integrates.
     settings:
       base:
         PRODUCT_NAME: RuntimeSDK
