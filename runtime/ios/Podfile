@@ -39,6 +39,24 @@ target 'RuntimeSdk' do
       config[:reactNativePath],
       :mac_catalyst_enabled => false,
     )
+
+    # Strip "[CP] Copy Pods Resources" from the RuntimeSDK framework
+    # target (lives in AppunvsRuntimeSDK.xcodeproj).  CocoaPods generates
+    # that phase listing resources from every pod the target's xcconfig
+    # references — including native-module bundles (RNSVG/RNSVGFilters.bundle,
+    # etc.) that we deliberately don't link.  Archive fails because those
+    # bundles aren't built for the framework target's BUILT_PRODUCTS_DIR.
+    # Host apps bundle their own resources, so this phase is dead weight
+    # for a brownfield framework.
+    require 'xcodeproj'
+    sdk_project = Xcodeproj::Project.open('AppunvsRuntimeSDK.xcodeproj')
+    sdk_project.targets.each do |t|
+      next unless t.name == 'RuntimeSDK'
+      t.build_phases.delete_if do |phase|
+        phase.respond_to?(:name) && phase.name == '[CP] Copy Pods Resources'
+      end
+    end
+    sdk_project.save
   end
 end
 
