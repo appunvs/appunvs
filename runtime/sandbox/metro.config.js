@@ -24,6 +24,14 @@ const ALLOWED_MODULES = new Set([
   'react/jsx-runtime',
   'react/jsx-dev-runtime',
   'react-native',
+  // Compiler emit, not a user-facing API.  babel-preset-env + the RN
+  // babel preset transpile ES module imports through helpers like
+  // `@babel/runtime/helpers/interopRequireDefault`; AI bundles can't
+  // (and don't) import these explicitly, but metro still asks the
+  // resolver to find them.  Allowlisted as a bypass for the user
+  // allowlist semantics — not in runtime/MODULES.md (that's only
+  // user-callable surface).
+  '@babel/runtime',
   'react-native-safe-area-context',
   'react-native-screens',
   'react-native-gesture-handler',
@@ -54,16 +62,48 @@ const APPUNVS_HOST_FILE = path.resolve(
   'HostBridge.ts',
 );
 
+// Where to search for node_modules.  Docker sandbox image has them at
+// /sandbox/node_modules (next to this config); the CI smoke job runs
+// from runtime/ with the install at runtime/node_modules (one level up).
+// Listing both keeps the config robust to either layout.
+const NODE_MODULES_PATHS = [
+  path.resolve(__dirname, 'node_modules'),
+  path.resolve(__dirname, '..', 'node_modules'),
+];
+
+const NODE_MODULES_SEGMENT = `${path.sep}node_modules${path.sep}`;
+
 const config = {
+  // watchFolders extends metro's "files it can read from" beyond the
+  // project root.  Needed so the CI smoke can pull in
+  // runtime/src/HostBridge.ts (lives outside runtime/sandbox/ which is
+  // metro's project root via getDefaultConfig(__dirname)) and so
+  // node_modules walking can step up.
+  watchFolders: [path.resolve(__dirname, '..')],
   resolver: {
-    // Treat every non-allowlisted bare import as missing.
+    nodeModulesPaths: NODE_MODULES_PATHS,
     resolveRequest: (context, moduleName, platform) => {
       // Map the host-bridge specifier to the in-tree TS file.  Done before
-      // the allowlist check so the rest of the function doesn't have to
+      // any other check so the rest of the function doesn't have to
       // special-case the @-scoped package against a real node_modules path.
       if (moduleName === '@appunvs/host') {
         return { type: 'sourceFile', filePath: APPUNVS_HOST_FILE };
       }
+
+      // Trust transitive imports.  Once an allowlisted package is in the
+      // graph, its OWN imports (whether bare like 'invariant', scoped like
+      // '@babel/runtime/helpers/...', or internal RN paths) are vetted by
+      // virtue of the package itself being allowlisted.  AI source CANNOT
+      // synthesise an import that appears to originate from inside
+      // node_modules — so this bypass is sound at the AI-source security
+      // boundary.  Without it the allowlist would have to enumerate every
+      // transitive dep of every Tier 1 module, which is a pile of
+      // versioned whack-a-mole.
+      if (context.originModulePath &&
+          context.originModulePath.includes(NODE_MODULES_SEGMENT)) {
+        return context.resolveRequest(context, moduleName, platform);
+      }
+
       const isRelative = moduleName.startsWith('./') || moduleName.startsWith('../');
       const isAbsolute = path.isAbsolute(moduleName);
       if (isRelative || isAbsolute) {
