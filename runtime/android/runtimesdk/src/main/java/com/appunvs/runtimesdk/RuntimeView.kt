@@ -23,8 +23,10 @@ import android.net.Uri
 import android.util.AttributeSet
 import android.widget.FrameLayout
 import com.facebook.react.bridge.JSBundleLoader
+import com.facebook.react.common.annotations.UnstableReactNativeAPI
 import com.facebook.react.defaults.DefaultComponentsRegistry
 import com.facebook.react.defaults.DefaultReactHostDelegate
+import com.facebook.react.defaults.DefaultTurboModuleManagerDelegate
 import com.facebook.react.fabric.ComponentFactory
 import com.facebook.react.runtime.ReactHostImpl
 
@@ -58,6 +60,7 @@ class RuntimeView @JvmOverloads constructor(
      * success.  Bundle-load errors surface via RN's red-box overlay
      * inside the mounted view; D3.e wires a real progress / error path.
      */
+    @OptIn(UnstableReactNativeAPI::class)
     @JvmOverloads
     fun loadBundle(url: String, completion: ((Throwable?) -> Unit)? = null) {
         reset()
@@ -87,6 +90,10 @@ class RuntimeView @JvmOverloads constructor(
             jsMainModulePath = "index",
             jsBundleLoader = JSBundleLoader.createFileLoader(filePath),
             reactPackages = emptyList(),
+            // Required as of RN 0.85.2 (the no-arg default was removed).
+            // Empty builder is fine because reactPackages is empty too —
+            // there are no turbo modules to register.
+            turboModuleManagerDelegateBuilder = DefaultTurboModuleManagerDelegate.Builder(),
         )
         val host = ReactHostImpl(
             application,
