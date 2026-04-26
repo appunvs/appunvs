@@ -18,13 +18,16 @@ import { host } from '@appunvs/host';
 
 function HostImportRoot() {
   // Read at render time so the bundler doesn't tree-shake the host import
-  // away.  Inside RuntimeView, host().sdkVersion comes from the native
-  // AppunvsHostModule's constantsToExport.
-  const sdkVersion = host().sdkVersion;
+  // away.  Inside RuntimeView, host().sdkVersion + host().identity come
+  // from the native AppunvsHostModule's constantsToExport.
+  const bridge = host();
   return (
     <View style={styles.container} testID="host-import-root">
       <Text style={styles.text} testID="host-import-sdk-version">
-        SDK {sdkVersion} via @appunvs/host
+        SDK {bridge.sdkVersion} via @appunvs/host
+      </Text>
+      <Text style={styles.text} testID="host-import-identity">
+        box {bridge.identity.boxID}@{bridge.identity.version}
       </Text>
     </View>
   );

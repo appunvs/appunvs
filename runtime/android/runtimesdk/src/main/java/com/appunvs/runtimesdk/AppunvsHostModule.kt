@@ -1,14 +1,14 @@
 // AppunvsHostModule — Android side of the bridge between AI bundles'
 // `@appunvs/host` imports and the host app's capabilities.
 //
-// D3.e.1 (this PR): scaffolding only.  Exposes a `sdkVersion` constant
-// and an `echo` smoke-test method.  Real surfaces (identity, storage,
-// network, publish) land in D3.e.{2,3,4,5}.
+// D3.e.1: scaffolding (sdkVersion + echo smoke).
+// D3.e.2 (this PR): identity flows in via the constructor — each
+// per-RuntimeView ReactHost gets its own AppunvsHostPackage(identity),
+// which constructs an AppunvsHostModule with that identity, and the
+// module exposes it as a `identity` constant.
 //
-// One instance per RuntimeView's ReactHost (the SDK constructs hosts
-// individually in RuntimeView.kt and passes our package list).  Per-
-// instance identity (boxID etc.) is NOT here yet — D3.e.2 will thread
-// it through loadBundle into the constructor.
+// Storage / network / publish are still no-ops here; D3.e.{3,4,5} land
+// the real surfaces.
 package com.appunvs.runtimesdk
 
 import com.facebook.react.bridge.Promise
@@ -16,8 +16,10 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 
-class AppunvsHostModule(reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext) {
+class AppunvsHostModule(
+    reactContext: ReactApplicationContext,
+    private val identity: RuntimeBoxIdentity,
+) : ReactContextBaseJavaModule(reactContext) {
 
     // The JS-side native module name.  AI bundles reach it via
     // `NativeModules.AppunvsHost`.  KEEP IN SYNC with the iOS
@@ -25,10 +27,16 @@ class AppunvsHostModule(reactContext: ReactApplicationContext) :
     override fun getName(): String = NAME
 
     // Constants are exposed once, when the module is initialised, and
-    // available from JS as `NativeModules.AppunvsHost.sdkVersion`.
-    // This is the SDK ABI version, not the host app or the bundle.
+    // available from JS as `NativeModules.AppunvsHost.sdkVersion` /
+    // `.identity`.  sdkVersion is the SDK ABI version (not host app,
+    // not bundle).  identity mirrors BoxIdentity in HostBridge.ts.
     override fun getConstants(): Map<String, Any> = mapOf(
         "sdkVersion" to "0.1.0",
+        "identity" to mapOf(
+            "boxID"   to identity.boxID,
+            "version" to identity.version,
+            "title"   to identity.title,
+        ),
     )
 
     // Smoke-test method: `host()._echo(s)` round-trips a string through

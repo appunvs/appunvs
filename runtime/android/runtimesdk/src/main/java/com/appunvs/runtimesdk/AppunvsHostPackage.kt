@@ -13,11 +13,13 @@ import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.uimanager.ViewManager
 
-class AppunvsHostPackage : ReactPackage {
+class AppunvsHostPackage(
+    private val identity: RuntimeBoxIdentity = RuntimeBoxIdentity.EMPTY,
+) : ReactPackage {
 
     override fun createNativeModules(
         reactContext: ReactApplicationContext,
-    ): List<NativeModule> = listOf(AppunvsHostModule(reactContext))
+    ): List<NativeModule> = listOf(AppunvsHostModule(reactContext, identity))
 
     override fun createViewManagers(
         reactContext: ReactApplicationContext,

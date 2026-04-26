@@ -72,9 +72,13 @@ declare global {
 // Lazy-required so this module is safe to import in non-RN environments
 // (jest, web preview, ssr): the require itself doesn't resolve unless
 // `host()` actually executes the lookup branch.
-function nativeAppunvsHost():
-  | { sdkVersion: string; echo(message: string): Promise<string> }
-  | null {
+type NativeAppunvsHost = {
+  sdkVersion: string;
+  identity?: { boxID?: unknown; version?: unknown; title?: unknown };
+  echo(message: string): Promise<string>;
+};
+
+function nativeAppunvsHost(): NativeAppunvsHost | null {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { NativeModules } = require('react-native') as {
@@ -82,12 +86,16 @@ function nativeAppunvsHost():
     };
     const mod = NativeModules?.AppunvsHost;
     if (mod && typeof (mod as { sdkVersion?: unknown }).sdkVersion === 'string') {
-      return mod as { sdkVersion: string; echo(message: string): Promise<string> };
+      return mod as NativeAppunvsHost;
     }
   } catch {
     // react-native not available — fall through to dev stub.
   }
   return null;
+}
+
+function asString(x: unknown): string {
+  return typeof x === 'string' ? x : '';
 }
 
 /** Returns the host bridge: from globalThis.__APPUNVS__ when an upstream
@@ -99,13 +107,20 @@ export function host(): HostBridge {
   }
   const native = nativeAppunvsHost();
   if (native) {
-    // D3.e.1: only sdkVersion is wired through to native today.  identity,
-    // storage, network, publish all stay on the stub — but storage/network/
-    // publish throw rather than no-op so AI bundles fail loudly if they
-    // try to use a surface before D3.e.{3,4,5} ships it.
+    // D3.e.1: sdkVersion + smoke methods.
+    // D3.e.2: identity now flows through native too — RuntimeView
+    // staged it before bridge init, AppunvsHostModule exposed it as a
+    // constant.  Storage / network / publish still stubbed-but-rejecting
+    // until D3.e.{3,4,5}.
+    const id = native.identity ?? {};
     return {
       ...__stub,
       sdkVersion: native.sdkVersion,
+      identity: {
+        boxID:   asString(id.boxID),
+        version: asString(id.version),
+        title:   asString(id.title),
+      },
       storage: __unimplementedStorage,
       network: __unimplementedNetwork,
       publish: __unimplementedPublish,

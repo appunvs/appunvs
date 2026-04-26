@@ -26,6 +26,8 @@
 #import <React_RCTAppDelegate/RCTRootViewFactory.h>
 #import <ReactAppDependencyProvider/RCTAppDependencyProvider.h>
 
+#import "AppunvsHostModule.h"
+
 // Per-instance delegate that just hands the factory the URL we were
 // asked to load.  RCTDefaultReactNativeFactoryDelegate handles the rest
 // (turbo modules registration via dependencyProvider, default config).
@@ -43,7 +45,8 @@
 @end
 
 @interface RuntimeView ()
-@property (nonatomic, copy, nullable) NSURL *currentBundleURL;
+@property (nonatomic, copy,   nullable) NSURL *currentBundleURL;
+@property (nonatomic, strong, nullable) RuntimeBoxIdentity *currentIdentity;
 @property (nonatomic, strong, nullable) RuntimeViewFactoryDelegate *rnDelegate;
 @property (nonatomic, strong, nullable) RCTReactNativeFactory *rnFactory;
 @property (nonatomic, weak,   nullable) UIView *rnRootView;
@@ -67,9 +70,23 @@
 
 - (void)loadBundleAtURL:(NSURL *)url
              completion:(RuntimeViewLoadCompletion)completion {
+    RuntimeBoxIdentity *empty =
+        [[RuntimeBoxIdentity alloc] initWithBoxID:@"" version:@"" title:@""];
+    [self loadBundleAtURL:url identity:empty completion:completion];
+}
+
+- (void)loadBundleAtURL:(NSURL *)url
+               identity:(RuntimeBoxIdentity *)identity
+             completion:(RuntimeViewLoadCompletion)completion {
     [self reset];
 
     self.currentBundleURL = url;
+    self.currentIdentity  = identity;
+
+    // Stage identity so the about-to-be-instantiated AppunvsHostModule's
+    // constantsToExport sees it.  See AppunvsHostModule.h for the race
+    // caveat (per-process, not per-bridge).
+    [AppunvsHostModule setPendingIdentity:identity];
 
     RuntimeViewFactoryDelegate *delegate = [[RuntimeViewFactoryDelegate alloc] init];
     delegate.bundleURLOverride = url;
@@ -111,6 +128,8 @@
     self.rnFactory        = nil;
     self.rnDelegate       = nil;
     self.currentBundleURL = nil;
+    self.currentIdentity  = nil;
+    [AppunvsHostModule setPendingIdentity:nil];
 }
 
 @end
