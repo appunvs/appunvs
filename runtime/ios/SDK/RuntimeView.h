@@ -1,23 +1,17 @@
 // RuntimeView — public surface for mounting an AI-generated bundle
 // inside the host's Stage tab.
 //
-// D2.c (this PR): placeholder UIView that just displays the loaded
-// bundle URL as a label — proves the API shape end-to-end, callable
-// from host SwiftUI / Compose, observable via loadBundle: + reset.
+// D3.c (this PR): the placeholder UILabel was swapped for a real RN
+// mount — `loadBundleAtURL:` now stands up an `RCTReactNativeFactory`
+// (RN 0.85's brownfield entry point), fetches + evaluates the JS bundle
+// under a dedicated Hermes runtime, and adds the resulting root view as
+// a subview filling self.bounds.  `reset` releases the factory, which
+// tears down the Hermes runtime so cross-bundle JS state can't leak.
 //
-// D3 replaces the placeholder impl with the real React Native +
-// Hermes mount.  The public surface here stays stable so host code
-// doesn't move between D2.c and D3.
-//
-// Forward-declarations for D3:
-//
-//   - The placeholder will be swapped for an RCTHost-backed
-//     React Fabric root view.
-//   - loadBundleAtURL: will fetch the JS bundle, evaluate it under a
-//     dedicated Hermes runtime, and mount the React tree inside this
-//     view's bounds.
-//   - reset will tear down the Hermes runtime and prepare for a
-//     fresh bundle load (no cross-bundle JS state).
+// JS contract: the bundle MUST register a component named "RuntimeRoot"
+// via `AppRegistry.registerComponent`.  Everything else is up to the
+// bundle author.  Tier-1 native modules (gesture-handler etc.) come
+// online in D3.d; the HostBridge plumbing in D3.e.
 #ifndef RuntimeView_h
 #define RuntimeView_h
 
