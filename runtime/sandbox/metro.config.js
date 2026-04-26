@@ -62,8 +62,24 @@ const APPUNVS_HOST_FILE = path.resolve(
   'HostBridge.ts',
 );
 
+// Where to search for node_modules.  Docker sandbox image has them at
+// /sandbox/node_modules (next to this config); the CI smoke job runs
+// from runtime/ with the install at runtime/node_modules (one level up).
+// Listing both keeps the config robust to either layout.
+const NODE_MODULES_PATHS = [
+  path.resolve(__dirname, 'node_modules'),
+  path.resolve(__dirname, '..', 'node_modules'),
+];
+
 const config = {
+  // watchFolders extends metro's "files it can read from" beyond the
+  // project root.  Needed so the CI smoke can pull in
+  // runtime/src/HostBridge.ts (lives outside runtime/sandbox/ which is
+  // metro's project root via getDefaultConfig(__dirname)) and so
+  // node_modules walking can step up.
+  watchFolders: [path.resolve(__dirname, '..')],
   resolver: {
+    nodeModulesPaths: NODE_MODULES_PATHS,
     // Treat every non-allowlisted bare import as missing.
     resolveRequest: (context, moduleName, platform) => {
       // Map the host-bridge specifier to the in-tree TS file.  Done before
