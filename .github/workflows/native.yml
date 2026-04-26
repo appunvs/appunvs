@@ -328,9 +328,12 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p build/sandbox
+          # --entry-file is relative to the metro project root, which the
+          # sandbox config sets to runtime/sandbox/ via getDefaultConfig(__dirname).
+          # So "fixture-host-import/index.tsx" — NOT "sandbox/fixture-host-import/...".
           npx --no-install react-native bundle \
             --config sandbox/metro.config.js \
-            --entry-file sandbox/fixture-host-import/index.tsx \
+            --entry-file fixture-host-import/index.tsx \
             --platform ios \
             --dev false \
             --minify false \
