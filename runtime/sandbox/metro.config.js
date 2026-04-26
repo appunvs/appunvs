@@ -28,6 +28,11 @@ const ALLOWED_MODULES = new Set([
   'react-native-screens',
   'react-native-gesture-handler',
   'react-native-reanimated',
+  // Reanimated 4 split out the worklets runtime into its own package;
+  // bundles using reanimated transitively import it.  Not in
+  // runtime/MODULES.md as a Tier 1 entry because AI bundles never need
+  // to import it directly — but metro must resolve it.
+  'react-native-worklets',
   'react-native-svg',
   'react-native-mmkv',
   // The host bridge — resolved at runtime by the SubRuntime native
