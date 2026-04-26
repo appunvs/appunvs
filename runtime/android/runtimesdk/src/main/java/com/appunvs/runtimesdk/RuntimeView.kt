@@ -89,7 +89,12 @@ class RuntimeView @JvmOverloads constructor(
         val delegate = DefaultReactHostDelegate(
             jsMainModulePath = "index",
             jsBundleLoader = JSBundleLoader.createFileLoader(filePath),
-            reactPackages = emptyList(),
+            // D3.e.1: AppunvsHostPackage is the single SDK-owned package
+            // — exposes `NativeModules.AppunvsHost` to JS so AI bundles'
+            // `@appunvs/host` imports have a real native target.  Tier 1
+            // RN packages (reanimated etc.) auto-register at runtime via
+            // their AAR's manifest entries; we don't list them here.
+            reactPackages = listOf(AppunvsHostPackage()),
             // Required as of RN 0.85.2 (the no-arg default was removed).
             // Empty builder is fine because reactPackages is empty too —
             // there are no turbo modules to register.
