@@ -24,12 +24,41 @@ concurrency:
   group: native-${{ github.ref }}
   cancel-in-progress: true
 
+# Cache strategy:
+#   - runtime/node_modules: keyed on runtime/package.json hash.  npm
+#     install becomes a near no-op when only source files changed.  No
+#     committed lockfile to key on; package.json is the next-best proxy.
+#   - ~/Library/Caches/CocoaPods: keyed on runtime/ios/Podfile hash.
+#     Saves the slow CDN spec-fetch on cache hits.  Only on macOS jobs.
+#   - Gradle: handled by gradle/actions/setup-gradle@v4 itself.
+# Skipped for now (fragile invalidation, ~5-10 min potential save):
+#   - runtime/ios/Pods (a hit could ship stale Pods if Podfile.lock is
+#     ever committed and we forget to key on it)
+#   - ~/Library/Developer/Xcode/DerivedData (project hash + Xcode
+#     version key combos are messy; cache often invalidates anyway)
+
 jobs:
   ios:
     name: appunvs/ios (Xcode)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache runtime/node_modules
+        uses: actions/cache@v4
+        with:
+          path: runtime/node_modules
+          key: ${{ runner.os }}-runtime-node-modules-${{ hashFiles('runtime/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-runtime-node-modules-
+
+      - name: Cache CocoaPods downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: ${{ runner.os }}-cocoapods-${{ hashFiles('runtime/ios/Podfile') }}
+          restore-keys: |
+            ${{ runner.os }}-cocoapods-
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -87,6 +116,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache runtime/node_modules
+        uses: actions/cache@v4
+        with:
+          path: runtime/node_modules
+          key: ${{ runner.os }}-runtime-node-modules-${{ hashFiles('runtime/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-runtime-node-modules-
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -143,6 +180,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache runtime/node_modules
+        uses: actions/cache@v4
+        with:
+          path: runtime/node_modules
+          key: ${{ runner.os }}-runtime-node-modules-${{ hashFiles('runtime/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-runtime-node-modules-
+
+      - name: Cache CocoaPods downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: ${{ runner.os }}-cocoapods-${{ hashFiles('runtime/ios/Podfile') }}
+          restore-keys: |
+            ${{ runner.os }}-cocoapods-
+
       - name: Show Xcode version
         run: xcodebuild -version
 
@@ -180,6 +233,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache runtime/node_modules
+        uses: actions/cache@v4
+        with:
+          path: runtime/node_modules
+          key: ${{ runner.os }}-runtime-node-modules-${{ hashFiles('runtime/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-runtime-node-modules-
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -234,6 +295,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Cache runtime/node_modules
+        uses: actions/cache@v4
+        with:
+          path: runtime/node_modules
+          key: ${{ runner.os }}-runtime-node-modules-${{ hashFiles('runtime/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-runtime-node-modules-
 
       - name: Build fixture bundle
         run: bash runtime/packaging/build-fixture.sh 2>&1 | tee /tmp/fixture-build.log
