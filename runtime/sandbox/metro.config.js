@@ -71,6 +71,8 @@ const NODE_MODULES_PATHS = [
   path.resolve(__dirname, '..', 'node_modules'),
 ];
 
+const NODE_MODULES_SEGMENT = `${path.sep}node_modules${path.sep}`;
+
 const config = {
   // watchFolders extends metro's "files it can read from" beyond the
   // project root.  Needed so the CI smoke can pull in
@@ -80,14 +82,28 @@ const config = {
   watchFolders: [path.resolve(__dirname, '..')],
   resolver: {
     nodeModulesPaths: NODE_MODULES_PATHS,
-    // Treat every non-allowlisted bare import as missing.
     resolveRequest: (context, moduleName, platform) => {
       // Map the host-bridge specifier to the in-tree TS file.  Done before
-      // the allowlist check so the rest of the function doesn't have to
+      // any other check so the rest of the function doesn't have to
       // special-case the @-scoped package against a real node_modules path.
       if (moduleName === '@appunvs/host') {
         return { type: 'sourceFile', filePath: APPUNVS_HOST_FILE };
       }
+
+      // Trust transitive imports.  Once an allowlisted package is in the
+      // graph, its OWN imports (whether bare like 'invariant', scoped like
+      // '@babel/runtime/helpers/...', or internal RN paths) are vetted by
+      // virtue of the package itself being allowlisted.  AI source CANNOT
+      // synthesise an import that appears to originate from inside
+      // node_modules — so this bypass is sound at the AI-source security
+      // boundary.  Without it the allowlist would have to enumerate every
+      // transitive dep of every Tier 1 module, which is a pile of
+      // versioned whack-a-mole.
+      if (context.originModulePath &&
+          context.originModulePath.includes(NODE_MODULES_SEGMENT)) {
+        return context.resolveRequest(context, moduleName, platform);
+      }
+
       const isRelative = moduleName.startsWith('./') || moduleName.startsWith('../');
       const isAbsolute = path.isAbsolute(moduleName);
       if (isRelative || isAbsolute) {
