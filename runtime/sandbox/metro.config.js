@@ -24,6 +24,14 @@ const ALLOWED_MODULES = new Set([
   'react/jsx-runtime',
   'react/jsx-dev-runtime',
   'react-native',
+  // Compiler emit, not a user-facing API.  babel-preset-env + the RN
+  // babel preset transpile ES module imports through helpers like
+  // `@babel/runtime/helpers/interopRequireDefault`; AI bundles can't
+  // (and don't) import these explicitly, but metro still asks the
+  // resolver to find them.  Allowlisted as a bypass for the user
+  // allowlist semantics — not in runtime/MODULES.md (that's only
+  // user-callable surface).
+  '@babel/runtime',
   'react-native-safe-area-context',
   'react-native-screens',
   'react-native-gesture-handler',
