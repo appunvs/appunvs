@@ -22,13 +22,14 @@ function HostImportRoot() {
   // from the native AppunvsHostModule's constantsToExport.
   const bridge = host();
 
-  // Exercises D3.e.3 storage path through the bundler — assigning
-  // host().storage to a const forces metro to keep the MMKV-backed code
-  // path in the bundle.  No actual call here (storage is async + would
-  // need useEffect); the build-time grep is enough to assert that the
-  // bridge surface includes storage.
+  // Touch every D3.e.{3,4,5} surface so metro keeps each code path in
+  // the bundle.  No actual calls — those are async and would need a
+  // useEffect; the build-time grep is enough to assert the bridge
+  // surface is wired through.
   const _storage = bridge.storage;
-  void _storage;
+  const _request = bridge.network.request;
+  const _publish = bridge.publish.publish;
+  void _storage; void _request; void _publish;
 
   return (
     <View style={styles.container} testID="host-import-root">

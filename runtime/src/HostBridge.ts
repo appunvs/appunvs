@@ -17,11 +17,12 @@
 // `host()` below detects it via `NativeModules.AppunvsHost` and returns a
 // bridge that surfaces native-side data.
 // D3.e.2: identity flowed through loadBundle into the module's constants.
-// D3.e.3 (this PR): storage real impl — backed by react-native-mmkv with
-//   a per-box namespace via MMKV's `id` parameter.  AI bundles can't reach
-//   another box's storage because the namespace ID is derived from the
-//   identity native handed us, which the bundle can read but not write.
-// D3.e.{4,5}: network + publish still pending.
+// D3.e.3: storage backed by react-native-mmkv with per-box namespace.
+// D3.e.{4,5} (this PR): network.request() + publish() — wrap calls to
+//   AppunvsHostModule.request / .publish, which delegate to a host-
+//   registered handler closure.  SDK never makes HTTP calls itself;
+//   host's HTTPClient owns auth + endpoints + retries.  network.subscribe
+//   stays a TODO (SSE is its own architecture).
 //
 // In environments without the native module (web preview, jest, the
 // runtime harness), `host()` falls back to the dev stub at the bottom
@@ -77,10 +78,23 @@ declare global {
 // Lazy-required so this module is safe to import in non-RN environments
 // (jest, web preview, ssr): the require itself doesn't resolve unless
 // `host()` actually executes the lookup branch.
+type NativeRequestResponse = {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+};
+
+type NativePublishResponse = {
+  version: string;
+  ok: boolean;
+};
+
 type NativeAppunvsHost = {
   sdkVersion: string;
   identity?: { boxID?: unknown; version?: unknown; title?: unknown };
   echo(message: string): Promise<string>;
+  request(method: string, path: string, body: string | null): Promise<NativeRequestResponse>;
+  publish(message: string | null): Promise<NativePublishResponse>;
 };
 
 function nativeAppunvsHost(): NativeAppunvsHost | null {
@@ -161,7 +175,10 @@ export function host(): HostBridge {
     // staged it before bridge init, AppunvsHostModule exposed it as a
     // constant.
     // D3.e.3: storage backed by MMKV scoped to identity.boxID.
-    // Network / publish still stubbed-but-rejecting until D3.e.{4,5}.
+    // D3.e.4: network.request() routes through native to a host-
+    //   registered handler.  network.subscribe stays a TODO (SSE).
+    // D3.e.5: publish() routes through native to a host-registered
+    //   handler.
     const id = native.identity ?? {};
     const identity = {
       boxID:   asString(id.boxID),
@@ -174,11 +191,55 @@ export function host(): HostBridge {
       sdkVersion: native.sdkVersion,
       identity,
       storage,
-      network: __unimplementedNetwork,
-      publish: __unimplementedPublish,
+      network: makeNetwork(native, identity.boxID),
+      publish: makePublish(native),
     };
   }
   return __stub;
+}
+
+// D3.e.4: SubNetwork backed by AppunvsHostModule.request.  Path
+// scoping to /box/{boxID}/* happens here on the JS side — we already
+// have the boxID from identity, so prefixing it client-side keeps the
+// native module's request handler simple (host just needs to know
+// baseURL + auth, not the box-routing convention).  network.subscribe
+// is still a TODO (SSE has its own architecture; not a one-shot RPC).
+function makeNetwork(native: NativeAppunvsHost, boxID: string): SubNetwork {
+  const scoped = boxID || 'dev';
+  return {
+    async request(path, init) {
+      const fullPath = path.startsWith('/box/')
+        ? path
+        : `/box/${scoped}${path.startsWith('/') ? path : '/' + path}`;
+      const method = init?.method ?? 'GET';
+      let body: string | null = null;
+      if (init?.body !== undefined && init.body !== null) {
+        body = typeof init.body === 'string' ? init.body : JSON.stringify(init.body);
+      }
+      const native_response = await native.request(method, fullPath, body);
+      // Wrap in a real Response so AI bundles can use .json() / .text() /
+      // .ok / .status normally.  Hermes ships the Web Response constructor.
+      return new Response(native_response.body, {
+        status: native_response.status,
+        headers: native_response.headers,
+      });
+    },
+    async subscribe() {
+      throw new Error(
+        'SubNetwork.subscribe not implemented yet — SSE is its own design slice',
+      );
+    },
+  };
+}
+
+// D3.e.5: SubPublish backed by AppunvsHostModule.publish.
+function makePublish(native: NativeAppunvsHost): SubPublish {
+  return {
+    async publish(message) {
+      const result = await native.publish(message ?? null);
+      return { version: result.version, ok: result.ok };
+    },
+  };
 }
 
 // Defensive fallback when react-native-mmkv require fails inside a
@@ -190,15 +251,6 @@ const __unimplementedStorage: SubStorage = {
   async setString() { throw new Error('SubStorage unavailable: react-native-mmkv failed to load'); },
   async remove() { throw new Error('SubStorage unavailable: react-native-mmkv failed to load'); },
   async keys() { throw new Error('SubStorage unavailable: react-native-mmkv failed to load'); },
-};
-
-const __unimplementedNetwork: SubNetwork = {
-  async request() { throw new Error('SubNetwork not implemented yet (D3.e.4)'); },
-  async subscribe() { throw new Error('SubNetwork not implemented yet (D3.e.4)'); },
-};
-
-const __unimplementedPublish: SubPublish = {
-  async publish() { throw new Error('SubPublish not implemented yet (D3.e.5)'); },
 };
 
 const __stub: HostBridge = {
