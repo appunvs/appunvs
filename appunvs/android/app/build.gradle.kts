@@ -47,6 +47,9 @@ android {
 
     buildFeatures {
         compose = true
+        // Generate BuildConfig so DEBUG-only entry points (Design tokens
+        // preview reachable from Profile) can branch on `BuildConfig.DEBUG`.
+        buildConfig = true
     }
 
     packaging {

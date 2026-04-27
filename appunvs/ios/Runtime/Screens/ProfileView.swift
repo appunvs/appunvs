@@ -156,6 +156,14 @@ struct ProfileView: View {
             Text("appunvs · v0.0.1 (dev)")
                 .font(.caption)
                 .foregroundStyle(Theme.textSecondary.color)
+            #if DEBUG
+            // Hidden behind DEBUG so the design-tokens preview ships
+            // out of release builds.  Used while iterating on Theme.swift
+            // / Typography to see every token rendered in one screen.
+            NavigationLink("Design tokens →", destination: TokensPreviewView())
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary.color)
+            #endif
         }
         .frame(maxWidth: .infinity)
         .padding(.top, Spacing.l)

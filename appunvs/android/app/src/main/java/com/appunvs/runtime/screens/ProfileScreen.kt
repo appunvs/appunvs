@@ -31,6 +31,10 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
+import com.appunvs.runtime.BuildConfig
 import com.appunvs.runtime.state.AppState
 import com.appunvs.runtime.state.AuthRepo
 import com.appunvs.runtime.theme.LocalAppColors
@@ -55,6 +60,21 @@ fun ProfileScreen(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalAppColors.current
+
+    // Local toggle for the design-tokens preview reachable from
+    // Footer's DEBUG-only link.  Pure local state so we don't have to
+    // wire a NavController just for this dev affordance.
+    var showTokens by remember { mutableStateOf(false) }
+    if (showTokens) {
+        Column(modifier = modifier.fillMaxSize().background(colors.bgPage)) {
+            TextButton(onClick = { showTokens = false }) {
+                Text(text = "← 返回", color = colors.brandDark)
+            }
+            TokensPreviewScreen()
+        }
+        return
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -75,7 +95,7 @@ fun ProfileScreen(
         UsageCard()
         ThemeCard(state = state)
         DevicesCard(auth = auth)
-        Footer(auth = auth)
+        Footer(auth = auth, onShowTokens = { showTokens = true })
     }
 }
 
@@ -239,7 +259,7 @@ private fun DevicesCard(auth: AuthRepo) {
 }
 
 @Composable
-private fun Footer(auth: AuthRepo) {
+private fun Footer(auth: AuthRepo, onShowTokens: () -> Unit) {
     val colors = LocalAppColors.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -252,5 +272,17 @@ private fun Footer(auth: AuthRepo) {
             text = "appunvs · v0.0.1 (dev)",
             style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary),
         )
+        if (BuildConfig.DEBUG) {
+            // Hidden behind DEBUG so the design-tokens preview ships
+            // out of release builds.  Used while iterating on Theme.kt
+            // / Typography.kt to see every token in one screen.
+            TextButton(onClick = onShowTokens) {
+                Text(
+                    text = "Design tokens →",
+                    color = colors.textSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
     }
 }
