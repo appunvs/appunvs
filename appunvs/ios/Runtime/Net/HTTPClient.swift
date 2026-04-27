@@ -71,6 +71,49 @@ actor HTTPClient {
         let _: EmptyBody = try await request(path, method: method, body: body, allowEmpty: true)
     }
 
+    // MARK: - Raw (used by the SDK bridge)
+
+    /// Untyped variant for the SDK's AppunvsHost bridge — AI bundles
+    /// hand us an arbitrary path + body, we don't know the response
+    /// shape, so we just hand back status + headers + raw body string.
+    /// 4xx/5xx are NOT thrown here; the JS side treats them as normal
+    /// Response objects (matches the contract of `host().network.request`).
+    func raw(
+        method: String,
+        path: String,
+        body: String?
+    ) async throws -> (status: Int, headers: [String: String], body: String) {
+        let resolvedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        var req = URLRequest(url: baseURL.appendingPathComponent(resolvedPath))
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let token = tokenProvider() {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let body, !body.isEmpty {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = Data(body.utf8)
+        }
+
+        let data: Data
+        let resp: URLResponse
+        do {
+            (data, resp) = try await session.data(for: req)
+        } catch {
+            throw HTTPError.transport(error)
+        }
+        guard let http = resp as? HTTPURLResponse else {
+            throw HTTPError.noData
+        }
+        var headers: [String: String] = [:]
+        for (k, v) in http.allHeaderFields {
+            if let key = k as? String, let val = v as? String {
+                headers[key] = val
+            }
+        }
+        return (http.statusCode, headers, String(data: data, encoding: .utf8) ?? "")
+    }
+
     // MARK: - core
 
     private func request<B: Encodable, R: Decodable>(

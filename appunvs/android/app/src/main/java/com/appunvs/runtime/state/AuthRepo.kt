@@ -24,6 +24,7 @@ import com.appunvs.runtime.net.RegisterRequest
 import com.appunvs.runtime.net.RelayApi
 import com.appunvs.runtime.net.RelayBundle
 import com.appunvs.runtime.net.RelayClient
+import okhttp3.OkHttpClient
 import com.appunvs.runtime.net.SignupRequest
 import com.appunvs.runtime.net.TokenSource
 import kotlinx.coroutines.launch
@@ -49,6 +50,13 @@ class AuthRepo(application: Application) : AndroidViewModel(application) {
     private val bundle: RelayBundle = RelayClient.build(tokenSource)
     private val api: RelayApi = bundle.api
     val sse: AISSEClient = AISSEClient(bundle.http)
+
+    /// Auth-interceptor-wrapped OkHttpClient — exposed so the SDK
+    /// bridge wiring (RuntimeBridgeWiring) can issue arbitrary requests
+    /// from AI bundles via host().network.request without re-implementing
+    /// the auth header injection.  Token rotation is automatic since
+    /// the interceptor re-reads tokenSource on every call.
+    internal fun http(): OkHttpClient = bundle.http
 
     var phase by mutableStateOf<Phase>(Phase.Bootstrapping)
         private set

@@ -88,6 +88,14 @@ private struct SignedInRoot: View {
         // surface narrow.  Simpler than juggling factories at top level.
         boxStore.rebind(http: auth.sharedHTTP)
         chatStore.rebind(sse: auth.aiClient())
+
+        // D3.e wire-up: register host handlers with the SDK so AI bundles
+        // loaded into a RuntimeView can call host().network.request /
+        // host().publish.publish through to this shell's auth-aware
+        // HTTPClient.  Registrations are per-process; on sign-out + re-
+        // sign-in the new HTTPClient takes over via a fresh register().
+        RuntimeBridgeWiring.register(http: auth.sharedHTTP)
+
         await boxStore.refresh()
     }
 }

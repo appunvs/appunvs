@@ -8,6 +8,16 @@
 // supported window).
 #import "AppunvsHostModule.h"
 #import "RuntimeBoxIdentity.h"
+#import <React/RCTBridgeModule.h>
+
+// Class extension that adds RCTBridgeModule conformance to the public
+// class declared in AppunvsHostModule.h.  The conformance lives here
+// (not in the public header) because the host shell consumes
+// RuntimeSDK.xcframework without React Native's headers — exposing the
+// protocol publicly would force every host into a React-aware build
+// graph just to call the static registration methods.
+@interface AppunvsHostModule () <RCTBridgeModule>
+@end
 
 // Pending identity slot — RuntimeView calls +setPendingIdentity: before
 // it creates the RCTReactNativeFactory; the next AppunvsHostModule
