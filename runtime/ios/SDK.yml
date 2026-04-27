@@ -23,6 +23,26 @@ targets:
       - path: SDK
         excludes:
           - "**/.DS_Store"
+    # Explicit Info.plist — XcodeGen does NOT auto-generate one for
+    # framework targets the way it does for app targets, and an
+    # embedded framework with no Info.plist makes installd reject the
+    # consuming app at simulator install time:
+    #   "Info.plist missing at .../RuntimeFixtureApp.app/Frameworks/RuntimeSDK.framework/Info.plist"
+    # Archive-flavored builds (build-ios.sh) wrap their own bundle
+    # processing on top, so the missing plist only bites when the
+    # framework is embedded into a host app via target dependency.
+    info:
+      path: SDK/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: FMWK
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        NSPrincipalClass: ""
     # No `configFiles:` — XcodeGen validates those paths exist at
     # generate time, but Pods xcconfigs don't exist until `pod install`
     # runs (which happens AFTER xcodegen, since pod install needs the
