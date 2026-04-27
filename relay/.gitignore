@@ -1,0 +1,10 @@
+# Local secrets — never commit.  Source of truth lives in .env.example
+# (template) plus your own .env (gitignored).
+.env
+
+# Local SQLite / artifact / git workspace data.  Created by relay at
+# runtime, not committed.
+data/
+
+# Build output (Docker buildx leaves stuff here when SETs locally).
+build/

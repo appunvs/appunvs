@@ -32,6 +32,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 // DockerBuilder runs metro inside the appunvs/sandbox docker image.
@@ -52,15 +53,34 @@ type dockerRunner interface {
 	Run(ctx context.Context, args []string) (combinedOutput []byte, err error)
 }
 
-// NewDockerBuilder verifies docker is callable and returns a builder
-// configured to use the given image tag.  Use this from production
-// code paths; tests call newDockerBuilderForTest.
+// NewDockerBuilder verifies docker is callable and the configured
+// image is present on the local daemon, then returns a ready builder.
+// The image presence check fails loud at startup rather than at the
+// first publish — so deploys that forgot to run
+// runtime/packaging/build-sandbox.sh hit a clear error before the
+// first chat turn rather than a cryptic mid-stream "image not found".
+//
+// Use this from production code paths; tests construct DockerBuilder
+// directly with a fake runner.
 func NewDockerBuilder(image string) (*DockerBuilder, error) {
 	if image == "" {
 		return nil, errors.New("sandbox.DockerBuilder: image is required")
 	}
 	if _, err := exec.LookPath("docker"); err != nil {
 		return nil, fmt.Errorf("sandbox.DockerBuilder: docker not on PATH: %w", err)
+	}
+	// Verify the image is locally available — `docker image inspect`
+	// exits non-zero if the tag isn't pulled / built.  Use a short
+	// context so a stuck docker daemon doesn't hang startup.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := exec.CommandContext(ctx, "docker", "image", "inspect", image).Run(); err != nil {
+		return nil, fmt.Errorf(
+			"sandbox.DockerBuilder: image %q not found on local docker — "+
+				"run `bash runtime/packaging/build-sandbox.sh` to build it, "+
+				"or `docker pull %s` if hosted elsewhere: %w",
+			image, image, err,
+		)
 	}
 	return &DockerBuilder{Image: image, runner: execRunner{}}, nil
 }
