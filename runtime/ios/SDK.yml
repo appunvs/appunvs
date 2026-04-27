@@ -23,6 +23,26 @@ targets:
       - path: SDK
         excludes:
           - "**/.DS_Store"
+    # Explicit Info.plist — XcodeGen does NOT auto-generate one for
+    # framework targets the way it does for app targets, and an
+    # embedded framework with no Info.plist makes installd reject the
+    # consuming app at simulator install time:
+    #   "Info.plist missing at .../RuntimeFixtureApp.app/Frameworks/RuntimeSDK.framework/Info.plist"
+    # Archive-flavored builds (build-ios.sh) wrap their own bundle
+    # processing on top, so the missing plist only bites when the
+    # framework is embedded into a host app via target dependency.
+    info:
+      path: SDK/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: FMWK
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        NSPrincipalClass: ""
     # No `configFiles:` — XcodeGen validates those paths exist at
     # generate time, but Pods xcconfigs don't exist until `pod install`
     # runs (which happens AFTER xcodegen, since pod install needs the
@@ -37,6 +57,80 @@ targets:
         DEFINES_MODULE: YES
         BUILD_LIBRARY_FOR_DISTRIBUTION: YES
         SKIP_INSTALL: NO
-        # Allow non-modular includes — RN's headers (React-Core,
-        # ReactCommon, etc.) are still pre-modules in 0.85.
-        CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES: YES
+  # D3.c.4 iOS instrumented UI test — fixture app that mounts a real
+  # RuntimeView and loads the bundled RuntimeRoot.jsbundle.  Driven by
+  # the RuntimeFixtureUITests target via XCUIApplication.
+  RuntimeFixtureApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: RuntimeFixtureApp
+        excludes:
+          - "**/.DS_Store"
+    # Embed the fixture bundle as an app resource.  CI's
+    # runtime_sdk_ios_uitest job stages
+    # runtime/build/fixture/ios/RuntimeRoot.jsbundle into
+    # runtime/ios/RuntimeFixtureApp/Resources/ BEFORE xcodegen runs —
+    # XcodeGen silently ignores `resources:` paths that escape the
+    # project root, so the resource has to live inside runtime/ios/.
+    resources:
+      - path: RuntimeFixtureApp/Resources
+        optional: true
+    info:
+      path: RuntimeFixtureApp/Info.plist
+      properties:
+        CFBundleDisplayName: RuntimeFixture
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        LSRequiresIPhoneOS: true
+        UILaunchStoryboardName: ""
+        UIRequiredDeviceCapabilities:
+          - arm64
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        PRODUCT_NAME: RuntimeFixtureApp
+        PRODUCT_BUNDLE_IDENTIFIER: com.appunvs.runtimefixtureapp
+        TARGETED_DEVICE_FAMILY: "1,2"
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        # No code signing — runs only on simulator in CI / dev.
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGN_IDENTITY: ""
+        # Embed the SDK framework (Pods + RN dyld libs are integrated
+        # by cocoapods after xcodegen runs).
+        ENABLE_BITCODE: NO
+    dependencies:
+      - target: RuntimeSDK
+        embed: true
+        codeSign: false
+
+  RuntimeFixtureUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: RuntimeFixtureUITests
+        excludes:
+          - "**/.DS_Store"
+    info:
+      path: RuntimeFixtureUITests/Info.plist
+      properties:
+        CFBundleDisplayName: RuntimeFixtureUITests
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: BNDL
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+    settings:
+      base:
+        PRODUCT_NAME: RuntimeFixtureUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.appunvs.runtimefixtureapp.uitests
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        TEST_TARGET_NAME: RuntimeFixtureApp
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGN_IDENTITY: ""
+    dependencies:
+      - target: RuntimeFixtureApp

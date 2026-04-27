@@ -72,3 +72,20 @@ target 'RuntimeSDK' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 end
+
+# D3.c.4 iOS instrumented test scaffolding.  RuntimeFixtureApp is a
+# minimal app that mounts a RuntimeView and loads the bundled fixture;
+# RuntimeFixtureUITests is the XCUITest target that asserts the
+# greeting rendered.  Both live in the same xcodeproj XcodeGen
+# generates from SDK.yml.  The app gets its own Pods integration so
+# RN's dyld libs (hermes-engine, React-Core, Tier 1 native modules)
+# resolve at app link + load time.
+target 'RuntimeFixtureApp' do
+  project 'AppunvsRuntimeSDK.xcodeproj'
+
+  use_native_modules!
+  use_react_native!(
+    :path => '../node_modules/react-native',
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+end

@@ -254,6 +254,109 @@ jobs:
           } > /tmp/comment.md
           gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md
 
+  # D3.c.4 iOS half: instrumented UI test asserting RuntimeView loads
+  # + evaluates the fixture bundle + renders the registered RuntimeRoot
+  # component on a real simulator.  Mirrors runtime_sdk_android_instrumented.
+  #
+  # Runs in a separate job rather than appending to runtime_sdk_ios so a
+  # UI-test failure can be retried without rerunning the full xcframework
+  # archive build (which takes ~15 min on macos-15).
+  runtime_sdk_ios_uitest:
+    name: runtime SDK iOS (UI test)
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache runtime/node_modules
+        uses: actions/cache@v4
+        with:
+          path: runtime/node_modules
+          key: ${{ runner.os }}-runtime-node-modules-${{ hashFiles('runtime/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-runtime-node-modules-
+
+      - name: Cache CocoaPods downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: ${{ runner.os }}-cocoapods-${{ hashFiles('runtime/ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cocoapods-
+
+      - name: Cache runtime/ios/Pods
+        uses: actions/cache@v4
+        with:
+          path: runtime/ios/Pods
+          key: ${{ runner.os }}-runtime-ios-pods-${{ hashFiles('runtime/ios/Podfile.lock') }}
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Build the JS fixture before xcodegen + stage it into
+      # RuntimeFixtureApp/Resources/ so SDK.yml's resources entry
+      # picks it up.  XcodeGen ignores resource paths that escape the
+      # project root, so the bundle has to live inside runtime/ios/.
+      - name: Build + stage fixture bundle
+        run: |
+          npm --prefix runtime install --no-audit --no-fund --legacy-peer-deps 2>&1 | tail -10
+          bash runtime/packaging/build-fixture.sh 2>&1 | tee /tmp/fixture-build.log
+          test -f runtime/build/fixture/ios/RuntimeRoot.jsbundle
+          mkdir -p runtime/ios/RuntimeFixtureApp/Resources
+          cp runtime/build/fixture/ios/RuntimeRoot.jsbundle \
+             runtime/ios/RuntimeFixtureApp/Resources/RuntimeRoot.jsbundle
+
+      - name: Generate xcodeproj + pod install
+        run: |
+          set -o pipefail
+          (cd runtime/ios && xcodegen generate --spec SDK.yml --project .) 2>&1 | tee /tmp/xcodegen.log
+          (cd runtime/ios && pod install --repo-update) 2>&1 | tee /tmp/podinstall.log
+
+      # Run the XCUITest.  Scheme name matches the test target XcodeGen
+      # generated from SDK.yml.  -workspace because cocoapods produced
+      # RuntimeSdk.xcworkspace wrapping both xcodeprojs.
+      - name: xcodebuild test (RuntimeFixtureUITests)
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -workspace runtime/ios/RuntimeSdk.xcworkspace \
+            -scheme RuntimeFixtureUITests \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -derivedDataPath runtime/ios/build-uitest \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            2>&1 | tee /tmp/xcodebuild-test.log
+
+      - name: Post failure log to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### CI failure: \`${{ github.job }}\` on \`${{ github.head_ref }}\` @ \`${{ github.event.pull_request.head.sha }}\`"
+            echo ""
+            for log in /tmp/fixture-build.log /tmp/xcodegen.log /tmp/podinstall.log /tmp/xcodebuild-test.log; do
+              if [ -f "$log" ]; then
+                echo ""
+                echo "**$(basename $log)** (last 300 lines)"
+                echo ""
+                echo '```'
+                tail -300 "$log"
+                echo '```'
+              fi
+            done
+          } > /tmp/comment.md
+          gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md
+
   runtime_sdk_android:
     name: runtime SDK Android (Library)
     runs-on: ubuntu-24.04
