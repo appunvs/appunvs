@@ -300,16 +300,18 @@ jobs:
         with:
           node-version: '22'
 
-      # Build the JS fixture before xcodegen so SDK.yml's resources
-      # entry (../build/fixture/ios/RuntimeRoot.jsbundle) resolves at
-      # generate-time.  XcodeGen marks the resource `optional: true`
-      # so a missing file won't fail generate, but we'd rather have it
-      # present and embedded.
-      - name: Build fixture bundle
+      # Build the JS fixture before xcodegen + stage it into
+      # RuntimeFixtureApp/Resources/ so SDK.yml's resources entry
+      # picks it up.  XcodeGen ignores resource paths that escape the
+      # project root, so the bundle has to live inside runtime/ios/.
+      - name: Build + stage fixture bundle
         run: |
           npm --prefix runtime install --no-audit --no-fund --legacy-peer-deps 2>&1 | tail -10
           bash runtime/packaging/build-fixture.sh 2>&1 | tee /tmp/fixture-build.log
           test -f runtime/build/fixture/ios/RuntimeRoot.jsbundle
+          mkdir -p runtime/ios/RuntimeFixtureApp/Resources
+          cp runtime/build/fixture/ios/RuntimeRoot.jsbundle \
+             runtime/ios/RuntimeFixtureApp/Resources/RuntimeRoot.jsbundle
 
       - name: Generate xcodeproj + pod install
         run: |

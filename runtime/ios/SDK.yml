@@ -67,11 +67,14 @@ targets:
       - path: RuntimeFixtureApp
         excludes:
           - "**/.DS_Store"
-    # Embed the fixture bundle as an app resource.  Path is relative
-    # to runtime/ios (the SDK.yml location).  build-fixture.sh produces
-    # this file before the app is built.
+    # Embed the fixture bundle as an app resource.  CI's
+    # runtime_sdk_ios_uitest job stages
+    # runtime/build/fixture/ios/RuntimeRoot.jsbundle into
+    # runtime/ios/RuntimeFixtureApp/Resources/ BEFORE xcodegen runs —
+    # XcodeGen silently ignores `resources:` paths that escape the
+    # project root, so the resource has to live inside runtime/ios/.
     resources:
-      - path: ../build/fixture/ios/RuntimeRoot.jsbundle
+      - path: RuntimeFixtureApp/Resources
         optional: true
     info:
       path: RuntimeFixtureApp/Info.plist

@@ -1,0 +1,5 @@
+# Staged fixture bundle — copied here at CI time by the
+# runtime_sdk_ios_uitest job (and locally by anyone running the
+# UI test).  Source of truth is built by build-fixture.sh into
+# runtime/build/fixture/ios/RuntimeRoot.jsbundle.
+RuntimeFixtureApp/Resources/RuntimeRoot.jsbundle
