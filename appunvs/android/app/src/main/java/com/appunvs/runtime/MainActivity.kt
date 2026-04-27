@@ -97,7 +97,16 @@ private fun SignedInRoot(
     val boxRepo: BoxRepo = viewModel(factory = SimpleFactory { BoxRepo(auth.api()) })
     val chat: ChatViewModel = viewModel(factory = SimpleFactory { ChatViewModel(auth.sse) })
 
-    LaunchedEffect(Unit) { boxRepo.refresh() }
+    LaunchedEffect(Unit) {
+        // D3.e wire-up: register host handlers with the SDK so AI
+        // bundles loaded into RuntimeView can call host().network.request
+        // / host().publish.publish through to this shell's auth-aware
+        // OkHttpClient.  Per-process; on sign-out + re-sign-in the new
+        // OkHttpClient takes over via a fresh register() call.
+        RuntimeBridgeWiring.register(auth.http())
+
+        boxRepo.refresh()
+    }
 
     var selected by remember { mutableStateOf(Tab.CHAT) }
     Scaffold(
