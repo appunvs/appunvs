@@ -31,7 +31,10 @@ if [ ! -f "$ENTRY" ]; then
   exit 1
 fi
 
-cd /sandbox
+# /app/sandbox is the project root metro evaluates against (the
+# sandbox metro.config.js expects __dirname there to walk up to /app
+# for node_modules / runtime/src/HostBridge.ts).
+cd /app/sandbox
 
 # Pin platform via SANDBOX_PLATFORM; default ios (the bundle is platform
 # agnostic for almost all RN code, but reanimated and a few others have
@@ -49,7 +52,7 @@ npx --no-install react-native bundle \
   --dev false \
   --minify true \
   --bundle-output "${WORK}/index.bundle" \
-  --config "/sandbox/metro.config.js" \
+  --config "/app/sandbox/metro.config.js" \
   2>&1 | tee "${WORK}/build.log"
 
 # Optional: hermes pre-compile.  The hermes binary ships in
