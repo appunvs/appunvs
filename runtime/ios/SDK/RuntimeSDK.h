@@ -26,8 +26,12 @@
 
 // Public surface: expose every header the host needs to import here so
 // `@import RuntimeSDK;` (Swift `import RuntimeSDK`) gets all of them
-// in one shot.  D3 will add more (HostBridge, BundleLoader, etc.).
+// in one shot.  Without these #imports, Swift's `import RuntimeSDK`
+// only sees what the umbrella exposes — the headers being copied to
+// the framework's Headers/ dir isn't enough on its own.
 #import <RuntimeSDK/RuntimeView.h>
+#import <RuntimeSDK/AppunvsHostModule.h>
+#import <RuntimeSDK/RuntimeBoxIdentity.h>
 
 #ifdef __cplusplus
 extern "C" {
