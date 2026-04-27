@@ -69,6 +69,15 @@ Project-specific terms used throughout the codebase:
   (real metro inside `appunvs/sandbox` docker image).  Future: ECI /
   Modal / Vercel Sandbox / Firecracker.
 
+- **AI Engine** — `relay/internal/ai/Engine` interface that turns one
+  Chat turn into a stream of Token / ToolCall / ToolResult / Finished
+  frames.  Three implementations: `StubEngine` (echo, no provider hits;
+  CI default), `OpenAIEngine` (any OpenAI-compatible endpoint —
+  DeepSeek / Volcengine / Moonshot / Zhipu / Dashscope), and
+  `AnthropicEngine` (direct Anthropic Messages API for Claude).
+  Backend selection via `cfg.AI.Backend` = `stub` | `anthropic` |
+  `<provider id>`.
+
 - **SubRuntime** — one Hermes JS runtime, scoped to a single bundle load
   in a single RuntimeView.  Cross-bundle state cannot leak; reset =
   destroy.

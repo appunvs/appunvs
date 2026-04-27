@@ -222,6 +222,25 @@ func main() {
 	case "", "stub":
 		aiEngine = ai.NewStub()
 		logger.Info("ai engine wired", zap.String("backend", "stub"))
+	case "anthropic":
+		// Direct Anthropic Messages API (Claude Sonnet/Opus).  Separate
+		// branch from the OpenAI-compatible router because the wire
+		// format + tool schema differ enough to warrant a dedicated
+		// engine (see relay/internal/ai/anthropic_engine.go).
+		engine, err := ai.NewAnthropicEngine(ai.AnthropicConfig{
+			APIKey:    cfg.AI.APIKey,
+			BaseURL:   cfg.AI.BaseURL,
+			Model:     cfg.AI.Model,
+			MaxIters:  cfg.AI.MaxIters,
+			MaxTokens: cfg.AI.MaxTokens,
+		}, ws, boxSvc, st.Turns(), logger)
+		if err != nil {
+			logger.Fatal("ai engine", zap.Error(err))
+		}
+		aiEngine = engine
+		logger.Info("ai engine wired",
+			zap.String("backend", "anthropic"),
+			zap.String("model", cfg.AI.Model))
 	default:
 		// Treat anything else as a provider id; resolve via registry.
 		// Unknown ids fail loudly at startup rather than at first turn.
