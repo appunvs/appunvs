@@ -68,6 +68,45 @@ enum Radius {
     static let pill: CGFloat = 999
 }
 
+/// Typography scale.  Names are semantic (display / title / heading /
+/// body / bodyEmphasis / caption / label / mono) and shared with the
+/// Android side — see android/.../theme/Theme.kt for the parallel
+/// `Typography` object.  Values map to Apple's Dynamic Type scale so
+/// users who cranked up text size in Settings still get readable
+/// content.
+///
+/// View call sites: `Text("…").appFont(.body)` reads cleaner than
+/// `.font(Typography.body)`; both compile.  The `.appFont(_:)` modifier
+/// also drops the right `lineSpacing` when we add line-height tuning
+/// later.
+enum Typography {
+    /// Page hero — splash / onboarding marquee.
+    static let display       = Font.largeTitle.weight(.bold)
+    /// Tab / screen title.
+    static let title         = Font.title.weight(.bold)
+    /// Section heading inside a screen.
+    static let heading       = Font.title3.weight(.semibold)
+    /// Default reading copy.
+    static let body          = Font.body
+    /// Body with emphasis (button labels, primary metadata).
+    static let bodyEmphasis  = Font.body.weight(.semibold)
+    /// Tertiary / metadata text under primary content.
+    static let caption       = Font.caption
+    /// Tag / pill / form-field label — small, all-caps-ish weight.
+    static let label         = Font.footnote.weight(.semibold)
+    /// Code / IDs / hashes that need fixed pitch for alignment.
+    static let mono          = Font.body.monospaced()
+}
+
+extension View {
+    /// Sugar for `.font(Typography.x)`.  Reads more naturally at call
+    /// sites and gives us a single place to layer in `lineSpacing` /
+    /// `kerning` tuning later without revisiting every view.
+    func appFont(_ token: Font) -> some View {
+        self.font(token)
+    }
+}
+
 // MARK: - UIColor hex helper
 
 extension UIColor {
