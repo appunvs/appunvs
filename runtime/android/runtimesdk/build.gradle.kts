@@ -20,6 +20,10 @@ android {
     defaultConfig {
         minSdk = 24
         consumerProguardFiles("consumer-rules.pro")
+        // AndroidJUnitRunner — the standard runner for instrumented
+        // tests (androidx.test).  Required for ActivityScenario +
+        // UI Automator to work in the test APK.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -73,4 +77,19 @@ dependencies {
     implementation(project(":react-native-safe-area-context"))
     implementation(project(":react-native-svg"))
     implementation(project(":react-native-mmkv"))
+
+    // --- D3.c.4 instrumented UI test deps ---
+    //
+    // androidx.test.ext:junit + AndroidJUnit4 runner so we can
+    // @RunWith(AndroidJUnit4::class) and emit JUnit XML for CI.
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    // ActivityScenario for spinning up FixtureActivity from the test.
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    // UI Automator drives the system-wide accessibility tree — finds
+    // the rendered RN <Text> by its visible text.  Cheaper to use than
+    // Espresso here since RN's view hierarchy uses non-standard
+    // ReactTextView types Espresso's withText matcher trips over.
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
 }

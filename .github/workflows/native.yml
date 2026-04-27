@@ -312,6 +312,113 @@ jobs:
           } > /tmp/comment.md
           gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md
 
+  # D3.c.4: instrumented UI test that asserts RuntimeView actually
+  # loads + evaluates the fixture bundle and renders the registered
+  # "RuntimeRoot" component.  Boots an Android emulator (KVM-accelerated
+  # via /dev/kvm) and runs the test from runtime/android/runtimesdk's
+  # androidTest source set.  iOS counterpart pending (tracked in #18).
+  runtime_sdk_android_instrumented:
+    name: runtime SDK Android (instrumented)
+    runs-on: ubuntu-latest
+    # The emulator-runner action burns ~3-4 min of cold-boot time even
+    # with KVM + AVD cache.  Generous timeout protects against
+    # transient emulator hangs without sitting on a stalled job for
+    # the default 6h.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache runtime/node_modules
+        uses: actions/cache@v4
+        with:
+          path: runtime/node_modules
+          key: ${{ runner.os }}-runtime-node-modules-${{ hashFiles('runtime/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-runtime-node-modules-
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Ensure Android SDK 35
+        run: |
+          set -e
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # KVM permissions on ubuntu-latest (24.04+): the runner image
+      # ships /dev/kvm but locks it to the kvm group; the runner user
+      # isn't in that group.  Without this, the emulator falls back to
+      # software rendering and times out.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # Build the JS fixture and stage it as an androidTest asset so
+      # the test APK includes RuntimeRoot.jsbundle in its assets/ dir.
+      # build-fixture.sh runs the existing fixture pipeline that the
+      # `runtime fixture bundle` job already exercises.
+      - name: Build + stage fixture bundle
+        run: |
+          bash runtime/packaging/build-fixture.sh 2>&1 | tee /tmp/fixture-build.log
+          mkdir -p runtime/android/runtimesdk/src/androidTest/assets
+          cp runtime/build/fixture/android/RuntimeRoot.jsbundle \
+             runtime/android/runtimesdk/src/androidTest/assets/RuntimeRoot.jsbundle
+
+      - name: Run instrumented test (emulator)
+        # reactivecircus/android-emulator-runner provisions an AVD,
+        # boots the emulator with KVM, runs the script, and tears down.
+        # arch=x86_64 is the only thing fast enough to be tractable in
+        # CI; api-level 34 (one below host's 35) is the latest with a
+        # stable system image at this writing.
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            cd runtime/android
+            gradle :runtimesdk:connectedDebugAndroidTest --stacktrace --info 2>&1 | tee /tmp/instrumented.log
+
+      - name: Post failure log to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### CI failure: \`${{ github.job }}\` on \`${{ github.head_ref }}\` @ \`${{ github.event.pull_request.head.sha }}\`"
+            echo ""
+            for log in /tmp/fixture-build.log /tmp/instrumented.log; do
+              if [ -f "$log" ]; then
+                echo ""
+                echo "**$(basename $log)** (last 300 lines)"
+                echo ""
+                echo '```'
+                tail -300 "$log"
+                echo '```'
+              fi
+            done
+          } > /tmp/comment.md
+          gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md
+
   fixture_bundle:
     name: runtime fixture bundle
     runs-on: ubuntu-24.04

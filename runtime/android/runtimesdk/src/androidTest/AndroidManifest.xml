@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  androidTest manifest — declares the FixtureActivity used by
+  RuntimeViewFixtureTest to host a RuntimeView while the test asserts
+  the rendered output.
+
+  The test source set's manifest is merged into the library module's
+  test APK (built when running `connectedAndroidTest`).  The library
+  module itself ships an empty manifest; only the test APK needs an
+  activity.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="com.appunvs.runtimesdk.test.FixtureActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+    </application>
+</manifest>
