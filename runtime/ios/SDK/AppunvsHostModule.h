@@ -17,7 +17,15 @@
 #ifndef AppunvsHostModule_h
 #define AppunvsHostModule_h
 
-#import <React/RCTBridgeModule.h>
+#import <Foundation/Foundation.h>
+
+// Deliberately NOT importing <React/RCTBridgeModule.h> here.  The host
+// shell consumes RuntimeSDK.xcframework as a brownfield binary and does
+// NOT have React Native's headers in its include paths — pulling them
+// into this public umbrella-imported header would break the host
+// build.  The RCTBridgeModule conformance lives in a class extension
+// inside AppunvsHostModule.mm; the host only needs the static class
+// methods declared below.
 
 @class RuntimeBoxIdentity;
 
@@ -48,7 +56,7 @@ typedef void (^AppunvsPublishCompletion)(NSDictionary *_Nullable response,
 typedef void (^AppunvsPublishHandler)(NSString *_Nullable message,
                                        AppunvsPublishCompletion completion);
 
-@interface AppunvsHostModule : NSObject <RCTBridgeModule>
+@interface AppunvsHostModule : NSObject
 
 /// Stages identity into a static slot that the next module instance
 /// will pick up at constantsToExport time.  RuntimeView calls this
