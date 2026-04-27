@@ -161,8 +161,30 @@ func main() {
 	if err != nil {
 		logger.Fatal("workspace store", zap.Error(err))
 	}
+	// Sandbox build backend: "stub" returns a placeholder bundle that
+	// won't load (test fixture); "docker" shells out to a sandbox image
+	// that runs metro on AI source.  Future backends (managed clouds)
+	// plug in the same Builder interface.  See sandbox/docker.go.
+	var builder sandbox.Builder
+	switch cfg.Sandbox.Backend {
+	case "", "stub":
+		builder = sandbox.NewLocalStub()
+		logger.Info("sandbox wired", zap.String("backend", "stub"))
+	case "docker":
+		db, err := sandbox.NewDockerBuilder(cfg.Sandbox.Image)
+		if err != nil {
+			logger.Fatal("sandbox docker", zap.Error(err))
+		}
+		builder = db
+		logger.Info("sandbox wired",
+			zap.String("backend", "docker"),
+			zap.String("image", cfg.Sandbox.Image))
+	default:
+		logger.Fatal("sandbox: unknown backend", zap.String("backend", cfg.Sandbox.Backend))
+	}
+
 	boxEvents := box.NewEvents()
-	boxSvc := box.New(st.Boxes(), sandbox.NewLocalStub(), artStore, ws, boxEvents)
+	boxSvc := box.New(st.Boxes(), builder, artStore, ws, boxEvents)
 	handler.RegisterBoxRoutes(r, handler.BoxDeps{
 		Signer:  signer,
 		Service: boxSvc,

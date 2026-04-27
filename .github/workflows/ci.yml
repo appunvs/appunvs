@@ -38,6 +38,49 @@ jobs:
         env:
           APPUNVS_TEST_REDIS: localhost:6379
 
+  # Sandbox docker round-trip — builds the appunvs/sandbox image (the
+  # one DockerBuilder shells out to) and runs the gated integration
+  # tests (build tag `docker_integration`) against the live image.
+  # This is the "real Metro builder" smoke for the publish path.
+  #
+  # Triggered on changes to relay/, runtime/sandbox/, runtime/src/,
+  # runtime/package*.json — not on every PR (the image build burns ~5
+  # min on cold cache).
+  sandbox_docker:
+    name: sandbox docker (DockerBuilder)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build sandbox image
+        # Build-context is runtime/ (see runtime/sandbox/Dockerfile
+        # comment).  --load makes the image visible to the local
+        # docker daemon so the Go test can `docker run` it.
+        uses: docker/build-push-action@v5
+        with:
+          context: runtime
+          file: runtime/sandbox/Dockerfile
+          tags: appunvs/sandbox:ci
+          load: true
+          # gha cache: maps the layer cache into GitHub's storage so
+          # subsequent runs hit the npm-install layer.  Saves ~5 min
+          # cold-cache → ~30s warm-cache.
+          cache-from: type=gha,scope=appunvs-sandbox
+          cache-to: type=gha,scope=appunvs-sandbox,mode=max
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: relay/go.mod
+          cache-dependency-path: relay/go.sum
+
+      - name: Run docker integration tests
+        working-directory: relay
+        env:
+          APPUNVS_SANDBOX_IMAGE: appunvs/sandbox:ci
+        run: go test -tags docker_integration ./internal/sandbox/... -timeout 5m -v
+
   # Native iOS + Android jobs live in `.github/workflows/native.yml` so
   # they only fire on `runtime/**` changes.  The Tauri job that lived
   # here is gone with the desktop pivot; v1 ships mobile-only.

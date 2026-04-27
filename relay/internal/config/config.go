@@ -20,7 +20,22 @@ type Config struct {
 	Billing   Billing   `mapstructure:"billing"`
 	Artifact  Artifact  `mapstructure:"artifact"`
 	Workspace Workspace `mapstructure:"workspace"`
+	Sandbox   Sandbox   `mapstructure:"sandbox"`
 	AI        AI        `mapstructure:"ai"`
+}
+
+// Sandbox configures the build backend that turns AI-edited source
+// files into a runnable JS bundle.  "stub" returns a placeholder
+// bundle (test fixture; RuntimeView refuses to load it); "docker"
+// shells out to `docker run` against a sandbox image (default
+// "appunvs/sandbox:latest", overridable via Sandbox.Image).
+//
+// Future backends (Aliyun ECI, Modal, Vercel Sandbox, Firecracker
+// pool) plug in the same way — Builder interface, configured
+// implementation.
+type Sandbox struct {
+	Backend string `mapstructure:"backend"` // "stub" | "docker"
+	Image   string `mapstructure:"image"`   // docker image ref when backend="docker"
 }
 
 // Artifact configures the bundle storage backend.  In v1 we ship a
@@ -117,6 +132,8 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("artifact.root", "data/artifacts")
 	v.SetDefault("artifact.base_url", "http://localhost:8080/_artifacts")
 	v.SetDefault("workspace.root", "data/workspaces")
+	v.SetDefault("sandbox.backend", "stub")
+	v.SetDefault("sandbox.image", "appunvs/sandbox:latest")
 	v.SetDefault("ai.backend", "stub")
 	v.SetDefault("ai.base_url", "https://api.deepseek.com/v1")
 	v.SetDefault("ai.model", "deepseek-chat")
