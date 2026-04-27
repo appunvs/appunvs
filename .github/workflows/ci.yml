@@ -5,6 +5,14 @@ on:
   push:
     branches: [main]
 
+# When sandbox_docker fails on a PR, post the captured log as a PR
+# comment so failures are visible without repo admin access to the
+# actions log download endpoint.  Mirrors the pattern used by
+# native.yml.
+permissions:
+  contents: read
+  pull-requests: write
+
 # Cancel in-flight runs on the same branch when a new commit lands.
 concurrency:
   group: ci-${{ github.ref }}
@@ -79,7 +87,36 @@ jobs:
         working-directory: relay
         env:
           APPUNVS_SANDBOX_IMAGE: appunvs/sandbox:ci
-        run: go test -tags docker_integration ./internal/sandbox/... -timeout 5m -v
+        run: go test -tags docker_integration ./internal/sandbox/... -timeout 5m -v 2>&1 | tee /tmp/sandbox-docker.log
+
+      - name: Capture image build log on failure
+        if: failure()
+        run: |
+          echo "=== docker images ==="
+          docker images || true
+          echo ""
+          echo "=== container last logs (if any) ==="
+          docker ps -a || true
+
+      - name: Post failure log to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### CI failure: \`${{ github.job }}\` on \`${{ github.head_ref }}\` @ \`${{ github.event.pull_request.head.sha }}\`"
+            echo ""
+            if [ -f /tmp/sandbox-docker.log ]; then
+              echo "**sandbox-docker.log** (last 200 lines)"
+              echo ""
+              echo '```'
+              tail -200 /tmp/sandbox-docker.log
+              echo '```'
+            else
+              echo "(no /tmp/sandbox-docker.log — failure happened before the test step ran)"
+            fi
+          } > /tmp/comment.md
+          gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md
 
   # Native iOS + Android jobs live in `.github/workflows/native.yml` so
   # they only fire on `runtime/**` changes.  The Tauri job that lived
