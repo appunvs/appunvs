@@ -16,6 +16,12 @@
 // call sees the empty default.
 static RuntimeBoxIdentity *_pendingIdentity = nil;
 
+// Host-supplied handlers (per-process).  Hosts call
+// +registerRequestHandler: / +registerPublishHandler: once at app
+// launch.  D3.e.4/5: still nil until host wires them in.
+static AppunvsRequestHandler _requestHandler = nil;
+static AppunvsPublishHandler _publishHandler = nil;
+
 @implementation AppunvsHostModule
 
 // `RCT_EXPORT_MODULE()` registers this class with the React bridge as
@@ -26,6 +32,14 @@ RCT_EXPORT_MODULE(AppunvsHost)
 
 + (void)setPendingIdentity:(RuntimeBoxIdentity *)identity {
     _pendingIdentity = identity;
+}
+
++ (void)registerRequestHandler:(AppunvsRequestHandler)handler {
+    _requestHandler = handler;
+}
+
++ (void)registerPublishHandler:(AppunvsPublishHandler)handler {
+    _publishHandler = handler;
 }
 
 // Constants are exposed once, when the module is initialised, and
@@ -53,9 +67,8 @@ RCT_EXPORT_MODULE(AppunvsHost)
 }
 
 // Smoke-test method: `host()._echo(s)` round-trips a string through the
-// bridge.  D3.e.4 / D3.e.5 will replace this with real
-// network.request / publish.publish methods; for now it lets us verify
-// the JS→native→JS path works end to end.
+// bridge.  Kept around for D3.e.{4,5} CI smoke; an AI bundle wouldn't
+// normally call it.
 RCT_EXPORT_METHOD(echo:(NSString *)message
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
@@ -64,6 +77,57 @@ RCT_EXPORT_METHOD(echo:(NSString *)message
         return;
     }
     resolve(message);
+}
+
+// D3.e.4: network.request().  JS already prefixed `path` with /box/{id}/.
+// Delegates to the host-registered handler — SDK doesn't make HTTP
+// calls itself.  Rejects if the host hasn't registered a handler.
+RCT_EXPORT_METHOD(request:(NSString *)method
+                      path:(NSString *)path
+                      body:(NSString *_Nullable)body
+                  resolve:(RCTPromiseResolveBlock)resolve
+                   reject:(RCTPromiseRejectBlock)reject) {
+    AppunvsRequestHandler handler = _requestHandler;
+    if (handler == nil) {
+        reject(@"E_NO_REQUEST_HANDLER",
+               @"host hasn't registered a network request handler "
+               @"(see AppunvsHostModule.h +registerRequestHandler:)",
+               nil);
+        return;
+    }
+    handler(method, path, body, ^(NSDictionary *response, NSError *error) {
+        if (error) {
+            reject(@"E_REQUEST_FAILED",
+                   error.localizedDescription ?: @"request failed",
+                   error);
+            return;
+        }
+        resolve(response ?: @{});
+    });
+}
+
+// D3.e.5: publish().  Same pattern — host's relay client knows what
+// publish means; SDK is a relay.
+RCT_EXPORT_METHOD(publish:(NSString *_Nullable)message
+                  resolve:(RCTPromiseResolveBlock)resolve
+                   reject:(RCTPromiseRejectBlock)reject) {
+    AppunvsPublishHandler handler = _publishHandler;
+    if (handler == nil) {
+        reject(@"E_NO_PUBLISH_HANDLER",
+               @"host hasn't registered a publish handler "
+               @"(see AppunvsHostModule.h +registerPublishHandler:)",
+               nil);
+        return;
+    }
+    handler(message, ^(NSDictionary *response, NSError *error) {
+        if (error) {
+            reject(@"E_PUBLISH_FAILED",
+                   error.localizedDescription ?: @"publish failed",
+                   error);
+            return;
+        }
+        resolve(response ?: @{ @"version": @"", @"ok": @NO });
+    });
 }
 
 @end
