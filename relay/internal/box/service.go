@@ -34,13 +34,19 @@ type Service struct {
 	Sandbox   sandbox.Builder
 	Artifact  artifact.Store
 	Workspace *workspace.Store
+	// Events is the per-namespace fanout BuildAndPublish notifies on
+	// success.  May be nil — tests that don't care about the
+	// notification surface leave it unset; production wires a
+	// NewEvents() in cmd/server/main.go.
+	Events *Events
 }
 
 // New returns a Service wired with all four collaborators.  `ws` may be
 // nil for tests that want to pass source directly through `sandbox.Source`
-// without going through the git-backed workspace layer.
-func New(boxes *store.Boxes, builder sandbox.Builder, store artifact.Store, ws *workspace.Store) *Service {
-	return &Service{Boxes: boxes, Sandbox: builder, Artifact: store, Workspace: ws}
+// without going through the git-backed workspace layer.  `events` may
+// also be nil — see Service.Events.
+func New(boxes *store.Boxes, builder sandbox.Builder, store artifact.Store, ws *workspace.Store, events *Events) *Service {
+	return &Service{Boxes: boxes, Sandbox: builder, Artifact: store, Workspace: ws, Events: events}
 }
 
 // Create creates a new draft box owned by providerDeviceID inside namespace.
@@ -206,6 +212,19 @@ func (s *Service) BuildAndPublish(ctx context.Context, namespace string, src san
 		if err := s.Boxes.SetState(ctx, namespace, box.ID, pb.PublishStatePublished); err != nil {
 			return store.Bundle{}, err
 		}
+	}
+	// Notify subscribed hosts that a new bundle is available.  Done
+	// AFTER all persistence so a host that immediately calls
+	// boxes.list/get sees the new current_version.
+	if s.Events != nil {
+		s.Events.Publish(namespace, Event{
+			Type:        EventBundleReady,
+			BoxID:       bundle.BoxID,
+			Version:     bundle.Version,
+			URI:         bundle.URI,
+			ContentHash: bundle.ContentHash,
+			SizeBytes:   bundle.SizeBytes,
+		})
 	}
 	return bundle, nil
 }

@@ -43,6 +43,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 
+import com.appunvs.runtime.net.BoxEventsClient
+import com.appunvs.runtime.net.BoxStreamEvent
 import com.appunvs.runtime.screens.ChatScreen
 import com.appunvs.runtime.screens.LoginScreen
 import com.appunvs.runtime.screens.ProfileScreen
@@ -106,6 +108,27 @@ private fun SignedInRoot(
         RuntimeBridgeWiring.register(auth.http())
 
         boxRepo.refresh()
+    }
+
+    // Hot-reload notifications: subscribe to /box/events.  When the AI
+    // agent (or any other actor) calls publish_box for one of this
+    // user's boxes, BuildAndPublish fans the bundle_ready event out to
+    // subscribers; we receive it here, refresh the box list, and
+    // Stage's reactive binding to activeBox.bundleURL flips —
+    // RuntimeView re-mounts the new bundle automatically.
+    //
+    // The collect runs in the LaunchedEffect's coroutine scope; on
+    // sign-out the SignedInRoot leaves composition, the LaunchedEffect
+    // cancels, and the in-flight HTTP call is torn down by OkHttp's
+    // response.use propagation.
+    LaunchedEffect(auth) {
+        val client = BoxEventsClient(auth.http())
+        client.events().collect { event ->
+            when (event) {
+                is BoxStreamEvent.BundleReady,
+                BoxStreamEvent.Reconnected   -> boxRepo.refresh()
+            }
+        }
     }
 
     var selected by remember { mutableStateOf(Tab.CHAT) }
