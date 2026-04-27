@@ -161,11 +161,17 @@ func main() {
 	if err != nil {
 		logger.Fatal("workspace store", zap.Error(err))
 	}
-	boxSvc := box.New(st.Boxes(), sandbox.NewLocalStub(), artStore, ws)
+	boxEvents := box.NewEvents()
+	boxSvc := box.New(st.Boxes(), sandbox.NewLocalStub(), artStore, ws, boxEvents)
 	handler.RegisterBoxRoutes(r, handler.BoxDeps{
 		Signer:  signer,
 		Service: boxSvc,
 		Log:     logger,
+	})
+	handler.RegisterBoxEventsRoutes(r, handler.BoxEventsDeps{
+		Signer: signer,
+		Events: boxEvents,
+		Log:    logger,
 	})
 
 	pairSvc := pairing.New(rdb)

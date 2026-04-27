@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/appunvs/appunvs/relay/internal/artifact"
 	"github.com/appunvs/appunvs/relay/internal/box"
@@ -40,7 +41,7 @@ func TestBuildAndPublishRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("artifact: %v", err)
 	}
-	svc := box.New(st.Boxes(), sandbox.NewLocalStub(), art, nil)
+	svc := box.New(st.Boxes(), sandbox.NewLocalStub(), art, nil, nil)
 
 	created, err := svc.Create(ctx, "u_test", "dev_a", "demo", pb.RuntimeKindRNBundle)
 	if err != nil {
@@ -117,7 +118,7 @@ func TestPublishWithWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workspace: %v", err)
 	}
-	svc := box.New(st.Boxes(), sandbox.NewLocalStub(), art, ws)
+	svc := box.New(st.Boxes(), sandbox.NewLocalStub(), art, ws, nil)
 
 	b, err := svc.Create(ctx, "u_ws", "dev_ws", "demo-ws", pb.RuntimeKindRNBundle)
 	if err != nil {
@@ -157,5 +158,73 @@ func TestPublishWithWorkspace(t *testing.T) {
 	}
 	if bundle2.SizeBytes == 0 {
 		t.Fatalf("bundle 2 from workspace snapshot should not be empty")
+	}
+}
+
+// TestBuildAndPublishEmitsEvent verifies that a successful publish
+// fans a bundle_ready Event out to subscribers in the publishing
+// namespace, and only that namespace.  This is the contract the
+// /box/events SSE handler relies on for hot-reload notifications.
+func TestBuildAndPublishEmitsEvent(t *testing.T) {
+	ctx := context.Background()
+
+	st, err := store.Open(ctx, t.TempDir()+"/relay.db")
+	if err != nil {
+		t.Fatalf("store open: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	if _, err := st.DB.ExecContext(ctx,
+		`INSERT INTO users(id, email, password_hash, created_at) VALUES(?,?,?,?)`,
+		"u_ev", "ev@example.com", "x", int64(1)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	art, err := artifact.NewLocalFS(t.TempDir(), "http://localhost:8080/_artifacts")
+	if err != nil {
+		t.Fatalf("artifact: %v", err)
+	}
+	events := box.NewEvents()
+	svc := box.New(st.Boxes(), sandbox.NewLocalStub(), art, nil, events)
+
+	mine := events.Subscribe("u_ev")
+	defer events.Unsubscribe(mine)
+	other := events.Subscribe("u_other")
+	defer events.Unsubscribe(other)
+
+	created, err := svc.Create(ctx, "u_ev", "dev_ev", "demo", pb.RuntimeKindRNBundle)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	bundle, err := svc.BuildAndPublish(ctx, "u_ev", sandbox.Source{
+		BoxID:      created.ID,
+		EntryPoint: "index.tsx",
+		Files:      map[string][]byte{"index.tsx": []byte("export default 1\n")},
+	})
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	select {
+	case ev := <-mine.Ch:
+		if ev.Type != box.EventBundleReady {
+			t.Errorf("type = %s, want bundle_ready", ev.Type)
+		}
+		if ev.BoxID != bundle.BoxID || ev.Version != bundle.Version {
+			t.Errorf("event id/version mismatch: got %s/%s want %s/%s",
+				ev.BoxID, ev.Version, bundle.BoxID, bundle.Version)
+		}
+		if ev.URI == "" {
+			t.Errorf("event URI is empty")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("publishing namespace didn't receive event")
+	}
+
+	select {
+	case ev := <-other.Ch:
+		t.Fatalf("foreign namespace got event: %+v", ev)
+	case <-time.After(50 * time.Millisecond):
+		// expected: silent
 	}
 }

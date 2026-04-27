@@ -73,6 +73,7 @@ private struct SignedInRoot: View {
             .environmentObject(boxStore)
             .environmentObject(chatStore)
             .task { await wireAndLoad() }
+            .task { await consumeBoxEvents() }
     }
 
     /// Replaces the placeholder stores' clients with ones backed by the
@@ -97,6 +98,31 @@ private struct SignedInRoot: View {
         RuntimeBridgeWiring.register(http: auth.sharedHTTP)
 
         await boxStore.refresh()
+    }
+
+    /// Drives the long-lived `/box/events` SSE stream.  When the AI
+    /// agent (or any other actor) calls publish_box for one of this
+    /// user's boxes, BuildAndPublish fans the bundle_ready event out to
+    /// subscribers; we receive it here, refresh the box list, and
+    /// Stage's reactive binding to activeBox.bundleURL flips —
+    /// RuntimeView re-mounts the new bundle automatically.
+    ///
+    /// Lives in its own `.task { }` so its lifetime tracks the view's
+    /// presentation; on disappear (sign-out, etc.) the Task cancels and
+    /// the AsyncStream's onTermination tears down the underlying
+    /// reconnect loop.
+    private func consumeBoxEvents() async {
+        let client = auth.boxEventsClient()
+        for await event in client.events() {
+            switch event {
+            case .bundleReady, .reconnected:
+                // Both branches do the same thing today: refresh the box
+                // list and let Stage's binding pick up the new URL.
+                // Distinct cases stay so we can attach divergent
+                // analytics / logging later without redoing the wiring.
+                await boxStore.refresh()
+            }
+        }
     }
 }
 

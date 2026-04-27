@@ -46,7 +46,7 @@ func TestAITurnSSEWithStub(t *testing.T) {
 
 	ws, _ := workspace.NewStore(workspace.Config{Root: tmp + "/ws"})
 	art, _ := artifact.NewLocalFS(tmp+"/art", "http://localhost:8080/_artifacts")
-	boxSvc := box.New(st.Boxes(), sandbox.NewLocalStub(), art, ws)
+	boxSvc := box.New(st.Boxes(), sandbox.NewLocalStub(), art, ws, nil)
 
 	boxObj, err := boxSvc.Create(ctx, "u_test", "dev_a", "demo", pb.RuntimeKindRNBundle)
 	if err != nil {

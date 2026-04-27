@@ -37,7 +37,7 @@ func TestRunToolEndToEnd(t *testing.T) {
 
 	ws, _ := workspace.NewStore(workspace.Config{Root: tmp + "/ws"})
 	art, _ := artifact.NewLocalFS(tmp+"/art", "http://localhost:8080/_artifacts")
-	svc := box.New(st.Boxes(), sandbox.NewLocalStub(), art, ws)
+	svc := box.New(st.Boxes(), sandbox.NewLocalStub(), art, ws, nil)
 
 	b, err := svc.Create(ctx, "u_t", "dev_a", "demo", pb.RuntimeKindRNBundle)
 	if err != nil {

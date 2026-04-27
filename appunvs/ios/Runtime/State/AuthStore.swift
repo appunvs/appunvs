@@ -54,6 +54,13 @@ final class AuthStore: ObservableObject {
         return AISSEClient(tokenProvider: { store.value })
     }
 
+    /// Long-lived box-events SSE consumer for hot-reload notifications.
+    /// Same token store so token rotations are picked up on reconnect.
+    func boxEventsClient() -> BoxEventsClient {
+        let store = self.tokenStore
+        return BoxEventsClient(tokenProvider: { store.value })
+    }
+
     // MARK: - Lifecycle
 
     func boot() async {
