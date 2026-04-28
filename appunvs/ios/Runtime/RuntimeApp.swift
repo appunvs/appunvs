@@ -127,17 +127,17 @@ private struct SignedInRoot: View {
 }
 
 struct RootView: View {
-    @State private var selection: Tab = .chat
+    @State private var selection: Tab = .boxes
 
-    enum Tab: Hashable { case chat, stage, profile }
+    enum Tab: Hashable { case boxes, stage, profile }
 
     var body: some View {
         TabView(selection: $selection) {
-            ChatView()
+            BoxesView()
                 .tabItem {
-                    Label("Chat", systemImage: "bubble.left.and.bubble.right")
+                    Label("Boxes", systemImage: "shippingbox")
                 }
-                .tag(Tab.chat)
+                .tag(Tab.boxes)
 
             StageView()
                 .tabItem {

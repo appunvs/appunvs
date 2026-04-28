@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.PlayCircleOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -45,6 +45,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 import com.appunvs.runtime.net.BoxEventsClient
 import com.appunvs.runtime.net.BoxStreamEvent
+import com.appunvs.runtime.screens.BoxesScreen
 import com.appunvs.runtime.screens.ChatScreen
 import com.appunvs.runtime.screens.LoginScreen
 import com.appunvs.runtime.screens.ProfileScreen
@@ -131,25 +132,30 @@ private fun SignedInRoot(
         }
     }
 
-    var selected by remember { mutableStateOf(Tab.CHAT) }
+    var selected by remember { mutableStateOf(Tab.BOXES) }
+    // chatBoxID drives the drill-down: when non-null, the Boxes screen
+    // is replaced by ChatScreen for that box; back button (in
+    // ChatScreen) clears it.  No NavController — local state keeps the
+    // wiring obvious and survives config change via remember.
+    var chatBoxID by remember { mutableStateOf<String?>(null) }
     Scaffold(
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    selected = selected == Tab.CHAT,
-                    onClick = { selected = Tab.CHAT },
-                    icon = { Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null) },
-                    label = { Text("Chat") },
+                    selected = selected == Tab.BOXES,
+                    onClick = { selected = Tab.BOXES; chatBoxID = null },
+                    icon = { Icon(Icons.Outlined.Inventory2, contentDescription = null) },
+                    label = { Text("Boxes") },
                 )
                 NavigationBarItem(
                     selected = selected == Tab.STAGE,
-                    onClick = { selected = Tab.STAGE },
+                    onClick = { selected = Tab.STAGE; chatBoxID = null },
                     icon = { Icon(Icons.Outlined.PlayCircleOutline, contentDescription = null) },
                     label = { Text("Stage") },
                 )
                 NavigationBarItem(
                     selected = selected == Tab.PROFILE,
-                    onClick = { selected = Tab.PROFILE },
+                    onClick = { selected = Tab.PROFILE; chatBoxID = null },
                     icon = { Icon(Icons.Outlined.AccountCircle, contentDescription = null) },
                     label = { Text("Profile") },
                 )
@@ -158,14 +164,31 @@ private fun SignedInRoot(
     ) { padding ->
         val tabModifier = Modifier.fillMaxSize().padding(padding)
         when (selected) {
-            Tab.CHAT    -> ChatScreen(boxRepo = boxRepo, chat = chat, modifier = tabModifier)
+            Tab.BOXES -> {
+                val openBox = chatBoxID
+                if (openBox != null) {
+                    ChatScreen(
+                        boxRepo = boxRepo,
+                        chat = chat,
+                        boxID = openBox,
+                        onBack = { chatBoxID = null },
+                        modifier = tabModifier,
+                    )
+                } else {
+                    BoxesScreen(
+                        boxRepo = boxRepo,
+                        onSelect = { id -> chatBoxID = id },
+                        modifier = tabModifier,
+                    )
+                }
+            }
             Tab.STAGE   -> StageScreen(boxRepo = boxRepo, modifier = tabModifier)
             Tab.PROFILE -> ProfileScreen(state = state, auth = auth, modifier = tabModifier)
         }
     }
 }
 
-private enum class Tab { CHAT, STAGE, PROFILE }
+private enum class Tab { BOXES, STAGE, PROFILE }
 
 /// Tiny ViewModelProvider.Factory that constructs each ViewModel via a
 /// lambda — used to inject AuthRepo's Retrofit/OkHttp into BoxRepo and
