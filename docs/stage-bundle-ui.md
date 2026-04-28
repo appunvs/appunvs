@@ -176,3 +176,44 @@ dogfood 期间观察这几条：
 4. 哪些组件 / pattern 反复出现 —— 这是 v0 组件清单的真实信号
 
 这些指标比"我们觉得设计漂不漂亮"更能驱动 `@appunvs/ui` 的演进方向。
+
+---
+
+## 老实声明：库不能 100% 约束 AI
+
+`@appunvs/ui` 解决「**AI 有什么工具可用**」，**不解决「AI 怎么用**」。
+
+AI 仍然可以：
+- 完全无视 `@appunvs/ui`，自己写 `<View style={{...}}>`
+- 用了组件但传奇怪的 prop（比如把 `Card` 套 5 层）
+- 加 custom style override 把 token 颜色都覆盖掉
+- 选择诡异的布局组合
+
+### 可叠加的约束层（从软到硬）
+
+| 层 | 形式 | 强度 | 失败模式 |
+|---|---|---|---|
+| 1. 库（`@appunvs/ui`） | 可选 import | ⭐ | AI 直接绕过 |
+| 2. SKILL.md / system prompt | 文字指令 "always use these components" | ⭐⭐ | AI 忘记 / 选择性忽略 |
+| 3. **In-context examples** | 给 5-10 个标准 bundle 当 few-shot | ⭐⭐⭐⭐ | 训练 prior 还是会泄露 |
+| 4. ESLint / 自定义 linter | sandbox metro pipeline 里禁裸 View / 禁 inline style 之类 | ⭐⭐⭐⭐ | 误伤合理用法、AI 不懂错误就放弃 |
+| 5. 二次 review pass | 第一遍 AI 写完，第二遍专门 AI critique「你为什么没用 Button？」 | ⭐⭐⭐ | 多一次 token 成本、延迟翻倍 |
+| 6. Constrained generation | grammar / CFG 强制 JSX shape | ⭐⭐⭐⭐⭐ | 实现复杂、灵活性大幅降低 |
+
+Lovable / v0 / Bolt 大概在 **2 + 3 强组合**（system prompt + 大量 in-context examples + shadcn 是 web 训练数据的强 prior）。effect ≈ **80% 合规、20% 长尾偏离**。
+
+### 现实目标，不是完美目标
+
+> dogfood 一周后，**80% 的 bundle 不需要用户手动改样式就能看**
+
+这就够了 —— 不要把目标设成「AI 输出 100% 一致符合 design system」，那是不可能任务。
+
+**Phase 1**：上 1 + 2 + 3（库 + SKILL.md + examples 5-10 个）。Lovable / v0 / Bolt 都做了，是当前业界最划算的组合。
+
+**Phase 2**：dogfood 看长尾的 20% 都偏离在哪，再决定加哪一层：
+- 如果是「AI 写 inline style 太多」→ 上 4（linter）
+- 如果是「AI 误判组件场景」→ 上 5（review pass）
+- 如果是「AI 反复写错某种 JSX 结构」→ 加新 SKILL 反例就够，不用上 6
+
+**不要预先把所有层都堆上**。每加一层都有代价（开发成本、运行延迟、AI token 成本、误伤合理用法），按需投入才划算。
+
