@@ -199,8 +199,18 @@ func (e *OpenAIEngine) Run(ctx context.Context, req Request) (<-chan Frame, erro
 		var lastFinish string
 		var tokensIn, tokensOut int64
 
+		// Per-turn model override (req.Model) wins over the engine's
+		// configured default; empty falls back to e.cfg.Model.  Lets a
+		// per-conversation picker on the client switch between (e.g.)
+		// deepseek-chat and deepseek-reasoner without restarting the
+		// relay.
+		effectiveModel := e.cfg.Model
+		if req.Model != "" {
+			effectiveModel = req.Model
+		}
+
 		for iter := 0; iter < e.cfg.MaxIters; iter++ {
-			asst, used, finish, err := e.runOne(runCtx, out, turnID, messages)
+			asst, used, finish, err := e.runOne(runCtx, out, turnID, messages, effectiveModel)
 			if err != nil {
 				e.emitErr(out, turnID, err)
 				return
@@ -274,9 +284,9 @@ func (e *OpenAIEngine) Run(ctx context.Context, req Request) (<-chan Frame, erro
 // out as they arrive, accumulates tool_calls (which stream as partial
 // JSON across many deltas in the OpenAI protocol), and returns the
 // assembled assistant message + finish reason + usage.
-func (e *OpenAIEngine) runOne(ctx context.Context, out chan<- Frame, turnID string, messages []openai.ChatCompletionMessage) (openai.ChatCompletionMessage, openai.Usage, string, error) {
+func (e *OpenAIEngine) runOne(ctx context.Context, out chan<- Frame, turnID string, messages []openai.ChatCompletionMessage, model string) (openai.ChatCompletionMessage, openai.Usage, string, error) {
 	req := openai.ChatCompletionRequest{
-		Model:     e.cfg.Model,
+		Model:     model,
 		Messages:  messages,
 		Tools:     Tools(),
 		MaxTokens: e.cfg.MaxTokens,

@@ -73,6 +73,14 @@ type Request struct {
 	BoxID  string
 	Text   string
 	UserID string
+	// Model overrides the engine's default model for this turn only.
+	// Empty means "use whatever the engine was constructed with".
+	// Engines that don't support runtime model switching should ignore
+	// this; engines that do (OpenAIEngine, AnthropicEngine) wire it
+	// into their per-call model parameter.  Validation (does the
+	// engine actually serve this model?) is the engine's
+	// responsibility.
+	Model string
 }
 
 // Engine produces a stream of Frames for one Request.  Implementations

@@ -128,8 +128,18 @@ func (e *AnthropicEngine) Run(ctx context.Context, req Request) (<-chan Frame, e
 		var lastFinish string
 		var tokensIn, tokensOut int64
 
+		// Per-turn model override (req.Model) wins over the engine's
+		// configured default; empty falls back to e.cfg.Model.  Same
+		// semantics as the OpenAI engine — lets the client picker
+		// switch between (e.g.) claude-sonnet-4-6 and claude-opus-4-7
+		// per turn.
+		effectiveModel := e.cfg.Model
+		if req.Model != "" {
+			effectiveModel = req.Model
+		}
+
 		for iter := 0; iter < e.cfg.MaxIters; iter++ {
-			asst, used, finish, err := e.runOne(runCtx, out, turnID, messages)
+			asst, used, finish, err := e.runOne(runCtx, out, turnID, messages, effectiveModel)
 			if err != nil {
 				e.emitErr(out, turnID, err)
 				return
@@ -229,13 +239,13 @@ func extractToolUses(asst anthropic.MessageParam) []extractedToolUse {
 // runOne issues one streaming Messages call, forwards text deltas as
 // Token frames, accumulates the full response into a MessageParam ready
 // to append to history, and returns it + the final stop_reason + usage.
-func (e *AnthropicEngine) runOne(ctx context.Context, out chan<- Frame, turnID string, messages []anthropic.MessageParam) (anthropic.MessageParam, usage, string, error) {
+func (e *AnthropicEngine) runOne(ctx context.Context, out chan<- Frame, turnID string, messages []anthropic.MessageParam, model string) (anthropic.MessageParam, usage, string, error) {
 	tools, err := buildAnthropicTools()
 	if err != nil {
 		return anthropic.MessageParam{}, usage{}, "", err
 	}
 	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(e.cfg.Model),
+		Model:     anthropic.Model(model),
 		MaxTokens: int64(e.cfg.MaxTokens),
 		Messages:  messages,
 		System: []anthropic.TextBlockParam{

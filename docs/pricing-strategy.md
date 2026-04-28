@@ -1,57 +1,64 @@
 # Pricing strategy
 
-> **状态**：方向确定（subscription + 用量上限 + 超量两条路 + BYOK 单独通道），数字 v0 草案。
+> **状态**：方向确定（**订阅档位 + 5d 主限 + 月度兜底** + BYOK 单独通道），数字 v0 草案。
 > 等真上线收集到使用数据后微调。
 
 ---
 
 ## 出发点
 
-- 学 OpenAI / Anthropic：**月订阅是基础盘，用量是天花板，超量给两条路（升级 / 按量）**，不要纯免费、也不要纯按量
-- 国内市场对**月固定费**接受度高，对纯按量焦虑
-- 我们成本结构和竞品略不同：BYOK 让用户自带 LLM key 是杠杆 —— 成本最大头转嫁给用户，我们只赚基础设施
+- **四档订阅 + 双窗口硬上限**：用完即停（提示等下个周期或升档），不做按量超额。
+  - 实现简单：只数 turn，不需要 USD ledger / Stripe metered / 实时折算
+  - 用户心智简单：每档"我能做 N 次"清晰可数，不用算账单
+  - 防失控：不存在"用户睡一觉醒来欠 ¥500"的可能性
+  - 成本可控：硬墙保证毛利不被尾部用户吃光
+- **5d 滚动主限 + 月度兜底**：5d ≈ 一个 builder 自然 burst 周期（周二开始做到周五完成 MVP），比"小时级窗口"友好（不打断 flow），比单纯月限有节奏感（避免 day 1 烧光憋 29 天）。月限只在每个 5d 都跑满时才生效，作为最终兜底。
+- 国内市场对**月固定费**接受度高，对纯按量焦虑 —— 订阅锚定 + 硬墙正好对上
+- BYOK 单独通道：把 LLM 成本最大头转嫁给极客用户，我们只赚基础设施
+
+> 不做按量超额的取舍：放弃了一部分重度 builder 用户的"加钱继续"路径。补救：Max / Max+ 档位本身定得宽松（5000+ turn / 月），覆盖 95% 用户；剩下 5% 重度用户引导走 BYOK 通道（自己付 LLM、自由用量）。
 
 ## 命名：Free / Pro / Max / Max+
 
-跟 Anthropic Claude 订阅档位对齐。我们后面主打 Claude 路径，命名一致 = 用户不用做心智映射。
+四档清晰递进，覆盖从试用到团队的全谱系：
 
 ```
-Free     ← 免费引流，每天能玩
-Pro      ← 主力档（绝大多数付费用户）
-Max      ← 高频 / 重度用户
+Free     ← 免费试用（仅 DeepSeek，不可换模型，体验产品本身）
+Pro      ← 主力档（绝大多数付费用户；解锁全模型自由切换）
+Max      ← 高频 / 重度用户（更高额度 + 优先 sandbox）
 Max+     ← 团队 / 企业 / 给 Opus 类高端模型预留
 ```
 
 ## 四档草案（v0 数字）
 
-| 档 | 月费 | AI message / 月 | active box | publish_box / 月 | 可用模型 | 超量策略 |
-|---|---|---|---|---|---|---|
-| **Free** | ¥0 | 50 | 1 | 5 | DeepSeek 默认 | 阻塞到下月 / 升级提示 |
-| **Pro** | ¥30 | 500 | 5 | 50 | DeepSeek + Claude Sonnet | 0.05 元/条 OR 升 Max |
-| **Max** | ¥80 | 2000 | 20 | 200 | + Claude Opus | 0.04 元/条 OR 升 Max+ |
-| **Max+** | ¥200 | 5000 | 不限 | 500 | + 优先 sandbox 队列 + 私有部署/team workspace | 0.03 元/条 |
-| **BYOK** | ¥0 | 不限 LLM | 5 | 50 | 自带 key 任意模型 | sandbox 配额按 Pro 算 |
+> 说明：
+> - **可用模型**：Free 只锁定 DeepSeek（试用）；**Pro 及以上自由切换全部模型**（DeepSeek / Claude / GPT / Gemini）。这是 Pro 的核心价值，不是 Max 才解锁。
+> - **AI turn / 5d** 是主限，**AI turn / 月** 是兜底。任一窗口触达即暂停到该窗口复位 —— 通常 5d 先触达（节奏限制），月限只在用户每个 5d 都跑满时才生效（防极端）。
+> - 5d 是**滚动窗口**（每 turn 落库带 ts，实时计 `now() - 5d` 内的 count）；月度按自然月。
+> - 跨模型一视同仁（DeepSeek 一次和 Opus 一次都按 1 turn 计数）；后端对单 turn 做 token 软限：超基线 10× 按 2 turn 算，防滥用 / 长文档塞爆。后续按模型加权 multiplier（Opus 一次 = N turn）等真实成本数据回来再调，UI 不暴露。
+> - BYOK 用户 LLM 部分不计入 turn 上限，仅扣 sandbox / publish 配额。
 
-> 数字是 v0 草案，等 dogfood + 真用户数据再调。重要的是结构。
+| 档 | 月费 | turn / 5d（主） | turn / 月（兜底） | active box | publish_box / 月 | 可用模型 | 触达上限 |
+|---|---|---|---|---|---|---|---|
+| **Free** | ¥0 | 20 | 50 | 1 | 5 | **仅 DeepSeek**（不可切换） | 暂停到下个 5d / 引导升 Pro |
+| **Pro** | ¥30 | 200 | 500 | 5 | 50 | **全模型自由切换** | 暂停到下个 5d / 升 Max |
+| **Max** | ¥80 | 800 | 2000 | 20 | 200 | 全模型 + sandbox 优先队列 | 暂停到下个 5d / 升 Max+ |
+| **Max+** | ¥200 | 不限 5d | 5000 | 不限 | 500 | + Opus 优先 / 私有部署 / team | 暂停到下月 / 联系销售 |
+| **BYOK** | ¥0 | LLM 不计 | LLM 不计 | 5 | 50 | 自带 key 任意模型 | sandbox 用完按 Pro 价升级 |
+
+> 数字 v0 草案。等 dogfood + 真用户数据再调，重要的是结构。Max+ 取消 5d 限制只保留月限，覆盖企业级"集中冲刺一周"场景。
 
 ## 计费单位选择
 
-混用两个：
+混用三个：
 
-- **AI message / turn** —— 用户能直观理解（"我能聊 N 次"）
+- **AI turn / 月** —— 主限制，跨模型统一计数（用户能直观理解"我能聊 N 次"）
 - **active box 数量** —— 心理感知强（"我能开 N 个项目"）的硬限制
+- **publish_box / 月** —— 独立配额，每次触发 sandbox 真实算力
 
-LLM token 不直接暴露给用户（波动太大、不直观），但**后端做软限制**：单条 message 烧 token 超过某个倍数（比如 10×）按 2 条算 —— 防滥用 / 长文档塞爆。
+LLM token 不直接暴露给用户（波动太大、不直观）；后端对单 turn 做 token 软限（10× 算 2 turn）防滥用。
 
-`publish_box` 单独算（每次触发 sandbox 真实算力）。
-
-## 超量两条路 vs OpenAI 降级模式
-
-OpenAI 默认是「Plus 用 80 条降级到 mini」。我们选**直接按量**：
-
-- 弹窗"已用 500/500 → [升级 Max] [继续按 0.05 元/条] [等下月]"
-- 用户明确知道每条消息成本，不会被偷偷降级
-- 国内用户对"明码标价"接受度比"自动降级"高（被坑过太多次自动开通的服务）
+> 不向用户呈现"美元/RMB 等值额度"。turn 是统一单位，模型差价由档位结构吸收（Pro 用户多用 Opus 会更快到 500 turn 上限，但毛利保护由档位本身覆盖）。
 
 ## BYOK 单独通道
 
@@ -59,11 +66,13 @@ OpenAI 默认是「Plus 用 80 条降级到 mini」。我们选**直接按量**�
 - 吸引种子用户 / 极客用户 —— 这些人愿意自己申请 Anthropic 账号、付跨境费
 - 我们 LLM 成本归零，只承担 sandbox + relay + 存储成本
 - 病毒传播载体：BYOK 用户在社区分享 "appunvs 让我自带 key 用 Claude 做 RN app"，比付费用户传播力强
+- **覆盖按量重度用户**：放弃了按量超额后，重度 builder 的逃生口在这里
 
 **BYOK 用户付什么**：
 - 月费 0
-- sandbox / publish 配额按 Pro 档发（5 box / 50 publish）
-- 想超过这个量？有两选：升级到 Pro / Max（继续 BYOK 但买 sandbox 量），或自建 relay（开源版本）
+- LLM 部分自付（用户在设置页填 Anthropic / OpenAI / Gemini 的 key，relay 转发不存储 key 明文）
+- sandbox / publish 配额按 Pro 档发（5 box / 50 publish / month）
+- 想超过这个量？升级到 Pro / Max（保留 BYOK，仅买更多 sandbox 配额），或自建 relay（开源版）
 
 **风险**：
 - 极客用户白嫖完 5 个 box 后流失
@@ -71,11 +80,11 @@ OpenAI 默认是「Plus 用 80 条降级到 mini」。我们选**直接按量**�
 
 ## 成本测算（DeepSeek 基线）
 
-中度用户（月内 500 message + 50 publish）：
+中度用户（月内 500 turn + 50 publish）：
 
 | 项 | 单价 | 月成本 |
 |---|---|---|
-| DeepSeek token | ~¥0.001 / 1K input + ¥0.002 / 1K output | ~¥3-5（按 avg 3K token / message） |
+| DeepSeek token | ~¥0.001 / 1K input + ¥0.002 / 1K output | ~¥3-5（按 avg 3K token / turn） |
 | 阿里云 ECI sandbox | ~¥0.10 / publish（按秒计 ~30s） | ~¥5 |
 | Artifact 存储 | LocalFS / 对象存储 ~免费 | ~¥0.5 |
 | Relay 共享 | 单机摊销 | ~¥1 |
@@ -83,11 +92,15 @@ OpenAI 默认是「Plus 用 80 条降级到 mini」。我们选**直接按量**�
 | Pro 月费 | | **¥30** |
 | **毛利** | | **~60%** |
 
-中等用户毛利 60%。重度用户（用满 500 message）毛利会被压到 40%，但这种用户少。
+中等用户毛利 60%。**注意**：用户切到 Claude Sonnet / Opus 时 token 成本会大幅上升 —— Claude Sonnet 单价 ~30× DeepSeek，Opus ~70×。如果 Pro 用户全程用 Opus 跑满 500 turn，token 成本可达 ~¥200，**亏损 ¥170**。
 
-Free 档预期亏本但可控（每用户 ~¥1-2 marginal cost）—— 当获客成本看。
+应对（不开按量的前提下）：
+- **后端按模型加权 turn 计数**：用 Sonnet 一次 = 3 turn，用 Opus 一次 = 10 turn（multiplier 不暴露给用户）。Pro 用户用 Opus 实际上限就是 50 turn，亏损被吸收
+- 或者**简单粗暴：Free / Pro 限制只能用 DeepSeek + Sonnet，Max 才解锁 Opus**（违反前面"Pro 全模型"承诺，需要权衡）
 
-Max+ ¥200 给 Opus 用户：Claude Opus token 单价是 DeepSeek 的 ~30x，但 Max+ 用户量极少（典型 < 5%），平均毛利仍可保持 50%+。
+> 决策：v0 用**模型加权 turn 计数（隐式）**，不破坏"Pro 全模型"心智。具体倍数等真实成本数据回来再调。
+
+Max+ ¥200 给 Opus 用户：放更宽的 multiplier（如 Opus 一次 = 5 turn），但 Max+ 用户量极少（典型 < 5%），平均毛利仍可保持 50%+。
 
 ## 不要做的事
 
@@ -95,14 +108,16 @@ Max+ ¥200 给 Opus 用户：Claude Opus token 单价是 DeepSeek 的 ~30x，但
 - ❌ **纯订阅不限量**：1% 重度用户烧光所有利润；Bolt.new 早期吃过这亏
 - ❌ **海外档位（$20）直接对标人民币 ¥150**：国内付费墙过高，¥30 是更合适的锚定
 - ❌ **太多档**：超过 4 档用户决策瘫痪。Free / Pro / Max / Max+ 已经是上限
+- ❌ **Free 用户开放模型切换**：Free 是试用，不是低配版 —— 能切到 Claude / GPT 就没人付费了。Free 必须只 DeepSeek。
 - ❌ **限制 Free 用户用 publish**：publish 是产品核心 a-ha，让 Free 用户至少能完成一次完整 dogfood
+- ❌ **暴露模型加权 multiplier 给用户**：用户一旦看到"Opus = 10 turn"就觉得被宰；隐式扣减、UI 显示"剩余 N turn"即可
 
 ## 上线节奏（不用一次到位）
 
 **Phase 1（dogfood）**：完全免费，无任何用量限制 —— 收数据，看真实用量分布
-**Phase 2（小范围内测）**：上 Free + Pro 两档，¥30 试水
-**Phase 3（公开发布）**：四档全开 + BYOK 单独通道
-**Phase 4（运营调优）**：根据真实数据调 Pro 包含的 message 数（500 可能太多 / 太少）+ 考虑年付折扣（年付 8.5 折是行业惯例）
+**Phase 2（小范围内测）**：上 Free + Pro 两档，¥30 试水；turn 硬上限上线
+**Phase 3（公开发布）**：四档全开 + BYOK 单独通道；按模型加权计数上线
+**Phase 4（运营调优）**：根据真实数据调每档 turn 数 + multiplier 系数 + 考虑年付折扣（年付 8.5 折是行业惯例）
 
 ## 竞品定价快速对比
 
@@ -110,14 +125,41 @@ Max+ ¥200 给 Opus 用户：Claude Opus token 单价是 DeepSeek 的 ~30x，但
 
 | 产品 | 免费层 | 付费起步 | 计费单位 | 主要超量策略 |
 |---|---|---|---|---|
+| **Claude.ai** | 每天少量 message | $20/月（Pro） | 5h 滚动窗口 message 限速 | 等下个 5h 窗口 / 升 Max |
+| **ChatGPT Plus** | 受限 | $20/月 | message + token 限速 | 等限速复位 / 升 Pro |
+| **Cursor** | 50 fast/月 | $20/月（Pro） | USD 余额 + opt-in 按量 | 按量继续（默认关） |
 | **Lovable** | 每天 ~5 message | ~$20/月（Starter） | "credit"（一条 message 扣 X） | 升级 / 等下月 |
 | **v0** | 少量 generation | ~$20/月 | generation + token | 升级 |
 | **Bolt.new** | 每天 ~150-200K token | ~$20/月（Pro） | LLM token 直计 | 升级 / 加 Pro+ |
-| **a0.dev** | beta 试用 | 推测 ~$20/月 | message / generation | 不太透明 |
-| **appunvs** | 每月 50 message + 1 box | ¥30/月（Pro） | message + box + publish | 按量 OR 升级 |
+| **appunvs** | 20 turn / 5d + 50 turn / 月（仅 DeepSeek） | ¥30/月（Pro，全模型自由切换） | turn / 5d + turn / 月 + box + publish | **暂停到下个 5d / 升档**（订阅硬墙） |
 
 我们的差异点：
-- **国内价位**（¥30 ≈ 美元 $4，是 Lovable 的 1/5）—— 国内市场更可负担
-- **BYOK 通道**给到 LLM 完全免费，竞品没人有
+- **国内价位**（¥30 ≈ 美元 $4，是 Lovable / Cursor 的 1/5）—— 国内市场更可负担
+- **BYOK 通道**给到 LLM 完全免费，竞品没人有 —— 同时是重度用户的逃生口（弥补无按量超额）
+- **5d 滚动主限 + 月度兜底**：竞品要么纯月限（节奏感差）、要么 5h / 每日（builder 反工作流）、要么按量焦虑 —— 5d 单独成立
 - **active box 数量**作为限制维度 —— 用户感知强，竞品没人这么算
-- **超量直接按量**（明码），不偷偷降级
+- **付费门槛清晰**：Free 锁 DeepSeek 试体验，Pro 即解锁全模型（Claude / GPT / Gemini 自由切换），单点付费即可解锁产品全部能力
+- **订阅硬墙**：不做按量超额，实现轻、用户决策无负担
+
+## 实现复杂度
+
+订阅 + 硬墙模式让落地工作量大幅缩水（参考对比按量模式）：
+
+| 模块 | 按量模式 | 我们的模式（5d + 月硬墙） |
+|---|---|---|
+| Turn 计数 | 必须实时折算 USD | **两个 SQL count**：`ts >= now()-5d` + `ts >= month_start` |
+| 模型价格表 | 每模型每方向 USD/1M | 仅作为后端 multiplier 表，UI 不显示 |
+| Stripe | 订阅 + metered usage | **仅订阅**（subscription only） |
+| Ledger 表 | accrued_usd_cents 实时累加 | 不需要 —— 直接查 store.Turns 加 index |
+| 用户 UI | USD% + 按模型 turn 估算 + 按量开关 | "本周 N/M · 本月 N/M" 两行 |
+| 按量结算 | 月底批量 + 错误处理 + 退款流程 | **不存在** |
+| 客服压力 | "为什么我被扣了 ¥X？"问询 | **极低**（硬墙清晰） |
+
+落地顺序：
+1. **Phase A**：在 `store.Turns` 加 `(user_id, created_at)` index；写两个 quota 查询函数（`turnsLast5d` / `turnsThisMonth`）
+2. **Phase B**：`/ai/turn` 入口前查双窗口配额，任一超额返回 `429 plan_exhausted` + `Retry-After` 头（指向更近的复位时间）
+3. **Phase C**：模型加权 multiplier（Opus 一次扣多次）
+4. **Phase D**：Stripe 订阅 + Webhook 同步 plan
+5. **Phase E**：BYOK 通道（用户 settings 存 key，relay 转发）
+
+A/B 这周可做；C 等模型 catalog 扩到包含 Claude / GPT 后再加；D/E 等公开发布前。

@@ -39,10 +39,14 @@ class AISSEClient(
     private val json: Json = RelayClient.json,
 ) {
 
-    fun turn(boxID: String, text: String): Flow<AIFrame> = flow {
+    fun turn(boxID: String, text: String, model: String = ""): Flow<AIFrame> = flow {
         val body = json.encodeToString(
             AITurnRequest.serializer(),
-            AITurnRequest(boxID = boxID, text = text),
+            AITurnRequest(
+                boxID = boxID,
+                text = text,
+                model = model.ifEmpty { null },
+            ),
         ).toRequestBody("application/json".toMediaType())
 
         val req = Request.Builder()

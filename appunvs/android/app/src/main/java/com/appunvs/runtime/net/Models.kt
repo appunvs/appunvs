@@ -137,6 +137,10 @@ data class PairClaimResponse(
 data class AITurnRequest(
     @SerialName("box_id") val boxID: String,
     val text: String,
+    /// Optional per-turn model override.  Empty → omit so the relay
+    /// uses its engine default.  We send `null` (which the kotlinx
+    /// JSON config skips) rather than a sentinel string.
+    val model: String? = null,
 )
 
 // MARK: - Generic
