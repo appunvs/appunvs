@@ -1,21 +1,22 @@
 # Pricing strategy
 
-> **状态**：方向确定（**Claude 式订阅档位 + 用量上限** + BYOK 单独通道），数字 v0 草案。
+> **状态**：方向确定（**Claude 式订阅档位 + 5d 主限 + 月度兜底** + BYOK 单独通道），数字 v0 草案。
 > 等真上线收集到使用数据后微调。
 
 ---
 
 ## 出发点
 
-- **学 Claude，不学 Cursor**：四档订阅 + 每档硬上限。用完即停（提示等下个周期或升档），不做按量超额。
+- **学 Claude，不学 Cursor**：四档订阅 + 每档双窗口硬上限。用完即停（提示等下个周期或升档），不做按量超额。
   - 实现简单：只数 turn，不需要 USD ledger / Stripe metered / 实时折算
   - 用户心智简单：每档"我能做 N 次"清晰可数，不用算账单
   - 防失控：不存在"用户睡一觉醒来欠 ¥500"的可能性
   - 成本可控：硬墙保证毛利不被尾部用户吃光
+- **采用 5d 滚动 + 月度兜底，不抄 Claude 的 5h 窗口** —— 5h 是为 chatter "短闲聊"设计的，对 builder 进入 flow 后切断 5h 是反工作流。5d ≈ 一个 builder 自然 burst 周期（周二开始做到周五完成 MVP），比 5h 友好、比月限有节奏感。
 - 国内市场对**月固定费**接受度高，对纯按量焦虑 —— Claude 模式正好对上
 - BYOK 单独通道：把 LLM 成本最大头转嫁给极客用户，我们只赚基础设施
 
-> 不做按量超额（Cursor 式）的取舍：放弃了一部分重度 builder 用户的"加钱继续"路径。补救：Max / Max+ 档位本身定得宽松（5000+ turn），覆盖 95% 用户；剩下 5% 重度用户引导走 BYOK 通道（自己付 LLM、自由用量）。
+> 不做按量超额（Cursor 式）的取舍：放弃了一部分重度 builder 用户的"加钱继续"路径。补救：Max / Max+ 档位本身定得宽松（5000+ turn / 月），覆盖 95% 用户；剩下 5% 重度用户引导走 BYOK 通道（自己付 LLM、自由用量）。
 
 ## 命名：Free / Pro / Max / Max+
 
@@ -32,18 +33,20 @@ Max+     ← 团队 / 企业 / 给 Opus 类高端模型预留
 
 > 说明：
 > - **可用模型**：Free 只锁定 DeepSeek（试用）；**Pro 及以上自由切换全部模型**（DeepSeek / Claude / GPT / Gemini）。这是 Pro 的核心价值，不是 Max 才解锁。
-> - **AI turn / 月** 是硬上限，对所有模型一视同仁（不区分 DeepSeek 一次还是 Opus 一次都按 1 turn）；后端做 token 软限：单 turn 烧 token 超过基线 10× 按 2 turn 算，防滥用 / 长文档塞爆。
-> - 硬上限触达后**直接暂停到下个计费周期**（月度滚动），UI 引导升档。BYOK 用户 LLM 部分不计入 turn 上限。
+> - **AI turn / 5d** 是主限，**AI turn / 月** 是兜底。任一窗口触达即暂停到该窗口复位 —— 通常 5d 先触达（节奏限制），月限只在用户每个 5d 都跑满时才生效（防极端）。
+> - 5d 是**滚动窗口**（每 turn 落库带 ts，实时计 `now() - 5d` 内的 count）；月度按自然月。
+> - 跨模型一视同仁（DeepSeek 一次和 Opus 一次都按 1 turn 计数）；后端对单 turn 做 token 软限：超基线 10× 按 2 turn 算，防滥用 / 长文档塞爆。后续按模型加权 multiplier（Opus 一次 = N turn）等真实成本数据回来再调，UI 不暴露。
+> - BYOK 用户 LLM 部分不计入 turn 上限，仅扣 sandbox / publish 配额。
 
-| 档 | 月费 | AI turn / 月 | active box | publish_box / 月 | 可用模型 | 触达上限 |
-|---|---|---|---|---|---|---|
-| **Free** | ¥0 | 50 | 1 | 5 | **仅 DeepSeek**（不可切换） | 暂停到下月 / 引导升 Pro |
-| **Pro** | ¥30 | 500 | 5 | 50 | **全模型自由切换** | 暂停 / 升 Max |
-| **Max** | ¥80 | 2000 | 20 | 200 | 全模型 + sandbox 优先队列 | 暂停 / 升 Max+ |
-| **Max+** | ¥200 | 5000 | 不限 | 500 | + Opus 优先 / 私有部署 / team | 暂停 / 联系销售 |
-| **BYOK** | ¥0 | LLM 不计 | 5 | 50 | 自带 key 任意模型 | sandbox 用完按 Pro 价升级 |
+| 档 | 月费 | turn / 5d（主） | turn / 月（兜底） | active box | publish_box / 月 | 可用模型 | 触达上限 |
+|---|---|---|---|---|---|---|---|
+| **Free** | ¥0 | 20 | 50 | 1 | 5 | **仅 DeepSeek**（不可切换） | 暂停到下个 5d / 引导升 Pro |
+| **Pro** | ¥30 | 200 | 500 | 5 | 50 | **全模型自由切换** | 暂停到下个 5d / 升 Max |
+| **Max** | ¥80 | 800 | 2000 | 20 | 200 | 全模型 + sandbox 优先队列 | 暂停到下个 5d / 升 Max+ |
+| **Max+** | ¥200 | 不限 5d | 5000 | 不限 | 500 | + Opus 优先 / 私有部署 / team | 暂停到下月 / 联系销售 |
+| **BYOK** | ¥0 | LLM 不计 | LLM 不计 | 5 | 50 | 自带 key 任意模型 | sandbox 用完按 Pro 价升级 |
 
-> 数字 v0 草案。等 dogfood + 真用户数据再调，重要的是结构。
+> 数字 v0 草案。等 dogfood + 真用户数据再调，重要的是结构。Max+ 取消 5d 限制只保留月限，覆盖企业级"集中冲刺一周"场景。
 
 ## 计费单位选择
 
@@ -128,7 +131,7 @@ Max+ ¥200 给 Opus 用户：放更宽的 multiplier（如 Opus 一次 = 5 turn�
 | **Lovable** | 每天 ~5 message | ~$20/月（Starter） | "credit"（一条 message 扣 X） | 升级 / 等下月 |
 | **v0** | 少量 generation | ~$20/月 | generation + token | 升级 |
 | **Bolt.new** | 每天 ~150-200K token | ~$20/月（Pro） | LLM token 直计 | 升级 / 加 Pro+ |
-| **appunvs** | 50 turn + 1 box（仅 DeepSeek） | ¥30/月（Pro，全模型自由切换） | turn + box + publish | **暂停到下月 / 升档**（Claude 式硬墙） |
+| **appunvs** | 20 turn / 5d + 50 turn / 月（仅 DeepSeek） | ¥30/月（Pro，全模型自由切换） | turn / 5d + turn / 月 + box + publish | **暂停到下个 5d / 升档**（Claude 式硬墙） |
 
 我们的差异点：
 - **国内价位**（¥30 ≈ 美元 $4，是 Lovable / Cursor 的 1/5）—— 国内市场更可负担
@@ -141,19 +144,19 @@ Max+ ¥200 给 Opus 用户：放更宽的 multiplier（如 Opus 一次 = 5 turn�
 
 选 Claude 模式让落地工作量大幅缩水：
 
-| 模块 | Cursor 模式 | Claude 模式 |
+| 模块 | Cursor 模式 | Claude 模式（5d + 月） |
 |---|---|---|
-| Turn 计数 | 必须实时折算 USD | **简单计数**（已有 store.Turns） |
+| Turn 计数 | 必须实时折算 USD | **两个 SQL count**：`ts >= now()-5d` + `ts >= month_start` |
 | 模型价格表 | 每模型每方向 USD/1M | 仅作为后端 multiplier 表，UI 不显示 |
 | Stripe | 订阅 + metered usage | **仅订阅**（subscription only） |
-| Ledger 表 | accrued_usd_cents 实时累加 | turn 计数 monthly bucket 即可 |
-| 用户 UI | USD% + 按模型 turn 估算 + 按量开关 | "已用 N / M turn" 一行 |
+| Ledger 表 | accrued_usd_cents 实时累加 | 不需要 —— 直接查 store.Turns 加 index |
+| 用户 UI | USD% + 按模型 turn 估算 + 按量开关 | "本周 N/M · 本月 N/M" 两行 |
 | 按量结算 | 月底批量 + 错误处理 + 退款流程 | **不存在** |
 | 客服压力 | "为什么我被扣了 ¥X？"问询 | **极低**（硬墙清晰） |
 
 落地顺序：
-1. **Phase A**：在 `store.Turns` 上加 monthly aggregation（用户 + 月份 → turn count）
-2. **Phase B**：`/ai/turn` 入口前查 quota，超额返回 `429 plan_exhausted`
+1. **Phase A**：在 `store.Turns` 加 `(user_id, created_at)` index；写两个 quota 查询函数（`turnsLast5d` / `turnsThisMonth`）
+2. **Phase B**：`/ai/turn` 入口前查双窗口配额，任一超额返回 `429 plan_exhausted` + `Retry-After` 头（指向更近的复位时间）
 3. **Phase C**：模型加权 multiplier（Opus 一次扣多次）
 4. **Phase D**：Stripe 订阅 + Webhook 同步 plan
 5. **Phase E**：BYOK 通道（用户 settings 存 key，relay 转发）
