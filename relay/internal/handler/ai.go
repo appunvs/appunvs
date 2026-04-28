@@ -36,6 +36,12 @@ func RegisterAIRoutes(r gin.IRouter, d AIDeps) {
 type aiTurnBody struct {
 	BoxID string `json:"box_id"`
 	Text  string `json:"text"`
+	// Model overrides the engine's default model for this turn only.
+	// Empty means "use the default the engine was constructed with".
+	// Unknown ids surface as a per-engine error frame at run time —
+	// the handler doesn't validate (engines know their own model
+	// catalogues; surface the right error there).
+	Model string `json:"model,omitempty"`
 }
 
 // aiTurn streams the AI engine's frames as Server-Sent Events.  Each
@@ -92,6 +98,7 @@ func aiTurn(d AIDeps) gin.HandlerFunc {
 			BoxID:  body.BoxID,
 			Text:   body.Text,
 			UserID: claims.UserID,
+			Model:  body.Model,
 		})
 		if err != nil {
 			writeSSE(c, "error", gin.H{"error": err.Error()})
