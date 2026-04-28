@@ -1,30 +1,48 @@
 # AI Providers
 
-appunvs 的 AI agent 走 OpenAI 兼容协议，支持通过配置切换后端供应商。内置
-五家主流国内 LLM 的连接信息（BaseURL / 默认 model / API key 约定），但
-任何其他 OpenAI 兼容端点都可以通过直接提供 `base_url` + `model` 接入。
+appunvs 的 AI agent 同时支持三类后端：**Anthropic 原生 API**（Claude）、
+**Gemini 原生 API**、以及一切 **OpenAI 兼容协议**端点（OpenAI 自己 / DeepSeek /
+Moonshot / Zhipu / Dashscope / MiniMax 等）。OpenAI 兼容那一组共享同一个
+engine（`OpenAIEngine`），通过 provider 注册表查 base_url + 默认 model；
+Anthropic 与 Gemini 各有独立 engine（`AnthropicEngine` / `GeminiEngine`），
+因为协议形态差得够多。
 
-代码入口：[`relay/internal/ai/providers.go`](../relay/internal/ai/providers.go)
+代码入口：[`relay/internal/ai/providers.go`](../relay/internal/ai/providers.go)（OpenAI-compat 注册表）/
+[`anthropic_engine.go`](../relay/internal/ai/anthropic_engine.go) /
+[`gemini_engine.go`](../relay/internal/ai/gemini_engine.go)
 
 ## 已内置的供应商
 
+**原生 API（独立 engine）**：
+
+| Backend | 厂商 | 默认模型 | 备注 |
+| --- | --- | --- | --- |
+| `anthropic` | Anthropic Claude | `claude-opus-4-1` | 当前默认指向 Anthropic 最新 Opus 别名；想省钱可手动切 `claude-sonnet-4-0` |
+| `gemini` | Google Gemini | `gemini-2.5-pro` | 走 generativelanguage.googleapis.com，需要海外网络 |
+
+**OpenAI-compat（共享 engine + 注册表）**：
+
 | Provider ID | 厂商 | 默认模型 | 备注 |
 | --- | --- | --- | --- |
-| `deepseek` | DeepSeek | `deepseek-chat` | 默认选择，最便宜；`deepseek-reasoner` 可换思考模式 |
-| `volcengine` | 火山方舟（Ark） | *需用户指定* | 用的是账号下自建的**接入点 id**（`ep-YYYYMMDD-xxx`），需在 Ark 控制台先创建 |
-| `moonshot` | Moonshot（Kimi） | `kimi-k2-turbo-preview` | 长 context，工具调用稳 |
-| `zhipu` | 智谱 GLM | `glm-4.6` | 国内 agent 生态里工具调用最稳的一档 |
-| `dashscope` | 阿里百炼（Qwen） | `qwen3-coder-plus` | Qwen3 coder 原厂入口 |
+| `openai` | OpenAI | `gpt-5.5` | OpenAI 官方 models 页当前推荐复杂推理与编码任务从 `gpt-5.5` 开始 |
+| `deepseek` | DeepSeek | `deepseek-v4-pro` | `deepseek-chat` / `deepseek-reasoner` 已进入兼容别名阶段，并将在 2026-07-24 废弃 |
+| `moonshot` | Moonshot（Kimi） | `kimi-k2.6` | Moonshot 首页当前标注的“最新最智能”模型 |
+| `zhipu` | 智谱 GLM | `glm-4.7` | 智谱文档当前旗舰文本模型 |
+| `dashscope` | 阿里百炼（Qwen） | `qwen3-coder-next` | 阿里 Qwen-Coder 文档当前首选推荐 |
+| `minimax` | MiniMax（海螺） | `MiniMax-M2.7` | MiniMax 2026-03 发布的最新文本旗舰 |
 
 每家的 API key 约定（方便环境变量统一）：
 
 | Provider | 环境变量（约定） |
 | --- | --- |
+| Anthropic  | `ANTHROPIC_API_KEY` |
+| Gemini     | `GEMINI_API_KEY` |
+| OpenAI     | `OPENAI_API_KEY` |
 | DeepSeek   | `DEEPSEEK_API_KEY` |
-| Volcengine | `ARK_API_KEY` |
 | Moonshot   | `MOONSHOT_API_KEY` |
 | Zhipu      | `ZHIPU_API_KEY` |
 | Dashscope  | `DASHSCOPE_API_KEY` |
+| MiniMax    | `MINIMAX_API_KEY` |
 
 > appunvs 本身读 `APPUNVS_AI_API_KEY` / `APPUNVS_AI_MODEL` 这种统一命名；
 > 上面的变量只是各家 SDK / CLI 的默认约定，方便复用现有环境。
@@ -60,8 +78,7 @@ ai:
 ai:
   backend: zhipu
   api_key: ${ZHIPU_API_KEY}
-  # model 留空 → 默认 glm-4.6；要 glm-4.6-air 就覆盖：
-  # model: glm-4.6-air
+  # model 留空 → 默认 glm-4.7
 ```
 
 **阿里百炼 Qwen3**：
@@ -70,17 +87,7 @@ ai:
 ai:
   backend: dashscope
   api_key: ${DASHSCOPE_API_KEY}
-  # model 留空 → 默认 qwen3-coder-plus；要换成 qwen3-max：
-  # model: qwen3-max
-```
-
-**火山方舟（Ark）**——必须指定 `model`：
-
-```yaml
-ai:
-  backend: volcengine
-  api_key: ${ARK_API_KEY}
-  model:   ep-20260424-abc123          # 你在 Ark 控制台创建的接入点 id
+  # model 留空 → 默认 qwen3-coder-next；若偏通用对话可手动换 qwen3-max
 ```
 
 **Moonshot Kimi**：
@@ -89,7 +96,43 @@ ai:
 ai:
   backend: moonshot
   api_key: ${MOONSHOT_API_KEY}
-  # model 留空 → 默认 kimi-k2-turbo-preview
+  # model 留空 → 默认 kimi-k2.6
+```
+
+**OpenAI（GPT-5.5）**：
+
+```yaml
+ai:
+  backend: openai
+  api_key: ${OPENAI_API_KEY}
+  # model 留空 → 默认 gpt-5.5；更省钱可换 gpt-5.4-mini
+```
+
+**MiniMax 海螺**：
+
+```yaml
+ai:
+  backend: minimax
+  api_key: ${MINIMAX_API_KEY}
+  # model 留空 → 默认 MiniMax-M2.7
+```
+
+**Anthropic Claude**（走原生 API，不在 registry 里）：
+
+```yaml
+ai:
+  backend: anthropic
+  api_key: ${ANTHROPIC_API_KEY}
+  # model 留空 → 默认 claude-opus-4-1；省钱可换 claude-sonnet-4-0
+```
+
+**Google Gemini**（走原生 API，不在 registry 里）：
+
+```yaml
+ai:
+  backend: gemini
+  api_key: ${GEMINI_API_KEY}
+  # model 留空 → 默认 gemini-2.5-pro
 ```
 
 **自建 OpenAI 兼容端点（例如内部代理 / 未来新供应商）**：
@@ -129,7 +172,7 @@ ai:
 
 | 目标 | 操作 |
 | --- | --- |
-| 同供应商换模型（如 `deepseek-chat` → `deepseek-reasoner`） | 只改 `ai.model` |
+| 同供应商换模型（如 `deepseek-v4-pro` → `deepseek-v4-flash`） | 只改 `ai.model` |
 | 换供应商 | 改 `ai.backend` + 重新设 `ai.api_key` |
 | 自定义端点 / 代理 | `backend: openai-compatible` + 显式 `base_url` + `model` |
 

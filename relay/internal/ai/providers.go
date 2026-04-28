@@ -5,10 +5,11 @@
 //
 // Scope of this file:
 //   - DeepSeek (default) · api.deepseek.com
-//   - Volcengine Ark (火山方舟) · ark.cn-beijing.volces.com
+//   - OpenAI            · api.openai.com
 //   - Moonshot (Kimi)   · api.moonshot.cn
 //   - Zhipu (GLM)       · open.bigmodel.cn
 //   - Dashscope (Qwen)  · dashscope.aliyuncs.com
+//   - MiniMax           · api.minimaxi.com
 //
 // Any other OpenAI-compatible endpoint is still reachable by leaving
 // `Provider` empty and setting `BaseURL` + `Model` explicitly — the
@@ -25,7 +26,7 @@ import (
 // defaults; any of `BaseURL` / `ModelChat` / `ModelReason` on a caller's
 // `Config` override these without touching the registry.
 type Provider struct {
-	ID          string // lookup key: "deepseek", "volcengine", ...
+	ID          string // lookup key: "deepseek", "moonshot", ...
 	Name        string // human display name
 	BaseURL     string
 	ModelChat   string // default general-purpose chat model (empty if the provider has no useful public default)
@@ -44,28 +45,25 @@ var Providers = map[string]Provider{
 		ID:          "deepseek",
 		Name:        "DeepSeek",
 		BaseURL:     "https://api.deepseek.com/v1",
-		ModelChat:   "deepseek-chat",
-		ModelReason: "deepseek-reasoner",
+		ModelChat:   "deepseek-v4-pro",
+		ModelReason: "deepseek-v4-pro",
 		DocsURL:     "https://api-docs.deepseek.com",
 		EnvAPIKey:   "DEEPSEEK_API_KEY",
 	},
-	"volcengine": {
-		ID:      "volcengine",
-		Name:    "Volcengine Ark (火山方舟)",
-		BaseURL: "https://ark.cn-beijing.volces.com/api/v3",
-		// Ark routes via per-tenant "接入点 / endpoint" IDs (ep-YYYYMMDD-xyz)
-		// the caller must register in the console.  No useful chat default —
-		// set APPUNVS_AI_MODEL to the endpoint id after creating it.
-		ModelChat: "",
-		DocsURL:   "https://www.volcengine.com/docs/82379/1330310",
-		Note:      "Ark uses per-account endpoint IDs (ep-…). Create an endpoint in the console and set Model to that id.",
-		EnvAPIKey: "ARK_API_KEY",
+	"openai": {
+		ID:          "openai",
+		Name:        "OpenAI",
+		BaseURL:     "https://api.openai.com/v1",
+		ModelChat:   "gpt-5.5",
+		ModelReason: "gpt-5.4-mini",
+		DocsURL:     "https://platform.openai.com/docs",
+		EnvAPIKey:   "OPENAI_API_KEY",
 	},
 	"moonshot": {
 		ID:          "moonshot",
 		Name:        "Moonshot (Kimi)",
 		BaseURL:     "https://api.moonshot.cn/v1",
-		ModelChat:   "kimi-k2-turbo-preview", // long-context, tool_call friendly
+		ModelChat:   "kimi-k2.6",
 		ModelReason: "",
 		DocsURL:     "https://platform.moonshot.cn/docs",
 		EnvAPIKey:   "MOONSHOT_API_KEY",
@@ -74,8 +72,8 @@ var Providers = map[string]Provider{
 		ID:          "zhipu",
 		Name:        "Zhipu GLM",
 		BaseURL:     "https://open.bigmodel.cn/api/paas/v4",
-		ModelChat:   "glm-4.6",
-		ModelReason: "glm-4.6", // unified model; pass `"thinking": {"type": "enabled"}` when wanted
+		ModelChat:   "glm-4.7",
+		ModelReason: "glm-4.7", // unified model; pass `"thinking": {"type": "enabled"}` when wanted
 		DocsURL:     "https://open.bigmodel.cn/dev/api",
 		EnvAPIKey:   "ZHIPU_API_KEY",
 	},
@@ -83,9 +81,17 @@ var Providers = map[string]Provider{
 		ID:        "dashscope",
 		Name:      "Dashscope (Alibaba Qwen)",
 		BaseURL:   "https://dashscope.aliyuncs.com/compatible-mode/v1",
-		ModelChat: "qwen3-coder-plus",
+		ModelChat: "qwen3-coder-next",
 		DocsURL:   "https://help.aliyun.com/zh/model-studio",
 		EnvAPIKey: "DASHSCOPE_API_KEY",
+	},
+	"minimax": {
+		ID:        "minimax",
+		Name:      "MiniMax (海螺)",
+		BaseURL:   "https://api.minimaxi.com/v1",
+		ModelChat: "MiniMax-M2.7",
+		DocsURL:   "https://platform.minimaxi.com/document",
+		EnvAPIKey: "MINIMAX_API_KEY",
 	},
 }
 

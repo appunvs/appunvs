@@ -56,8 +56,8 @@ type Workspace struct {
 
 // AI configures the chat agent engine.  Default backend is DeepSeek
 // via the OpenAI-compatible protocol; swap `base_url` / `model` / `api_key`
-// to point at 火山 Ark, 阿里百炼, 智谱 GLM, Moonshot, or any other
-// OpenAI-compatible provider without touching the engine code.
+// to point at 阿里百炼, 智谱 GLM, Moonshot, or any other OpenAI-compatible
+// provider without touching the engine code.
 type AI struct {
 	Backend   string `mapstructure:"backend"`   // "deepseek" | "stub" | "openai-compatible"
 	BaseURL   string `mapstructure:"base_url"`
@@ -136,7 +136,8 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("sandbox.image", "appunvs/sandbox:latest")
 	v.SetDefault("ai.backend", "stub")
 	v.SetDefault("ai.base_url", "https://api.deepseek.com/v1")
-	v.SetDefault("ai.model", "deepseek-chat")
+	// Leave empty so each backend can apply its own current default.
+	v.SetDefault("ai.model", "")
 	v.SetDefault("ai.max_iters", 10)
 	v.SetDefault("ai.max_tokens", 8000)
 

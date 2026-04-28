@@ -212,11 +212,13 @@ func main() {
 	// engine — useful for UI work and CI where we don't want to burn
 	// provider tokens.  Real production config flips backend=deepseek
 	// (or any OpenAI-compatible endpoint) and supplies APIKey.
-	// AI engine selection.  `backend` is either `stub` (the echo engine
-	// used for UI dev and CI) or a provider id from `ai.Providers`
-	// (deepseek / volcengine / moonshot / zhipu / dashscope).  Any
-	// OpenAI-compatible endpoint is reachable by setting `backend` to
-	// the empty string but supplying `base_url` + `model` + `api_key`.
+	// AI engine selection.  Three branches:
+	//   - `stub` — echo engine for UI dev / CI
+	//   - `anthropic` / `gemini` — dedicated native-API engines
+	//   - everything else — provider id resolved via `ai.Providers`
+	//     (deepseek / openai / moonshot / zhipu / dashscope / minimax),
+	//     or `openai-compatible` for an unlisted endpoint with explicit
+	//     `base_url` + `model` + `api_key`.
 	var aiEngine ai.Engine
 	switch backend := cfg.AI.Backend; backend {
 	case "", "stub":
@@ -240,6 +242,24 @@ func main() {
 		aiEngine = engine
 		logger.Info("ai engine wired",
 			zap.String("backend", "anthropic"),
+			zap.String("model", cfg.AI.Model))
+	case "gemini":
+		// Native Gemini API.  Same reasoning as the anthropic branch:
+		// the wire format diverges enough from OpenAI's that a dedicated
+		// engine is cleaner than retrofitting OpenAIEngine.  See
+		// relay/internal/ai/gemini_engine.go.
+		engine, err := ai.NewGeminiEngine(ai.GeminiConfig{
+			APIKey:    cfg.AI.APIKey,
+			Model:     cfg.AI.Model,
+			MaxIters:  cfg.AI.MaxIters,
+			MaxTokens: cfg.AI.MaxTokens,
+		}, ws, boxSvc, st.Turns(), logger)
+		if err != nil {
+			logger.Fatal("ai engine", zap.Error(err))
+		}
+		aiEngine = engine
+		logger.Info("ai engine wired",
+			zap.String("backend", "gemini"),
 			zap.String("model", cfg.AI.Model))
 	default:
 		// Treat anything else as a provider id; resolve via registry.

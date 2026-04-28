@@ -41,7 +41,7 @@ import (
 // everything else has sane defaults.
 type AnthropicConfig struct {
 	APIKey    string
-	Model     string        // default: claude-sonnet-4-6
+	Model     string        // default: claude-opus-4-1
 	BaseURL   string        // default: official Anthropic endpoint
 	System    string        // default: shared defaultSystemPrompt
 	MaxIters  int           // default: 10
@@ -66,8 +66,9 @@ func NewAnthropicEngine(cfg AnthropicConfig, ws *workspace.Store, boxSvc *box.Se
 	}
 	if cfg.Model == "" {
 		// Default to the most capable available model.  Hard-coded; if you
-		// need to pick a different model per deploy, set Config.Model.
-		cfg.Model = string(anthropic.ModelClaudeSonnet4_6)
+		// need to pick a different model per deploy (e.g. claude-sonnet-4-0
+		// for cheaper turns), set Config.Model.
+		cfg.Model = string(anthropic.ModelClaudeOpus4_1)
 	}
 	if cfg.MaxIters == 0 {
 		cfg.MaxIters = 10
@@ -131,7 +132,7 @@ func (e *AnthropicEngine) Run(ctx context.Context, req Request) (<-chan Frame, e
 		// Per-turn model override (req.Model) wins over the engine's
 		// configured default; empty falls back to e.cfg.Model.  Same
 		// semantics as the OpenAI engine — lets the client picker
-		// switch between (e.g.) claude-sonnet-4-6 and claude-opus-4-7
+		// switch between (e.g.) claude-sonnet-4-0 and claude-opus-4-1
 		// per turn.
 		effectiveModel := e.cfg.Model
 		if req.Model != "" {

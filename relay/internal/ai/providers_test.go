@@ -65,14 +65,34 @@ func TestResolveUnknown(t *testing.T) {
 	}
 }
 
-// TestRequiredProvidersPresent guards the five launch providers.  Adding
-// a provider is fine; removing one of these five is a ship-blocking
-// change that must be discussed.
+// TestRequiredProvidersPresent guards the launch providers.  Adding
+// a provider is fine; removing one of these is a ship-blocking change
+// that must be discussed.
 func TestRequiredProvidersPresent(t *testing.T) {
-	required := []string{"deepseek", "volcengine", "moonshot", "zhipu", "dashscope"}
+	required := []string{"deepseek", "openai", "moonshot", "zhipu", "dashscope", "minimax"}
 	for _, id := range required {
 		if _, ok := ai.Providers[id]; !ok {
 			t.Errorf("required provider %q missing from registry", id)
+		}
+	}
+}
+
+// TestLaunchProviderDefaultModels pins the curated defaults used when callers
+// leave Config.Model empty. Updating these is intentional and should happen
+// alongside docs and release notes.
+func TestLaunchProviderDefaultModels(t *testing.T) {
+	want := map[string]string{
+		"deepseek":  "deepseek-v4-pro",
+		"openai":    "gpt-5.5",
+		"moonshot":  "kimi-k2.6",
+		"zhipu":     "glm-4.7",
+		"dashscope": "qwen3-coder-next",
+		"minimax":   "MiniMax-M2.7",
+	}
+	for id, wantModel := range want {
+		got := ai.Providers[id].ModelChat
+		if got != wantModel {
+			t.Errorf("provider %q ModelChat = %q, want %q", id, got, wantModel)
 		}
 	}
 }

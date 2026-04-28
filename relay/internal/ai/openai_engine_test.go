@@ -48,28 +48,6 @@ func TestNewOpenAIEngineOverridesWin(t *testing.T) {
 	}
 }
 
-// TestNewOpenAIEngineVolcengineRequiresModel guards the Volcengine Ark
-// footgun: the registry intentionally leaves ModelChat empty because
-// Ark routes via per-account endpoint ids.  Callers who forget to
-// supply Model must get a clear startup error that surfaces the
-// provider's Note, not an opaque 404 at first turn.
-func TestNewOpenAIEngineVolcengineRequiresModel(t *testing.T) {
-	_, err := ai.NewOpenAIEngine(ai.Config{
-		Provider: "volcengine",
-		APIKey:   "sk-test",
-	}, nil, nil, nil, zap.NewNop())
-	if err == nil {
-		t.Fatal("expected error when Volcengine Ark is picked without a Model")
-	}
-	if !strings.Contains(err.Error(), "Model required") {
-		t.Fatalf("err = %q, want 'Model required' hint", err.Error())
-	}
-	// The Note should surface so operators aren't hunting for the fix.
-	if !strings.Contains(err.Error(), "endpoint") {
-		t.Fatalf("err = %q, want endpoint-id note", err.Error())
-	}
-}
-
 // TestNewOpenAIEngineRawMode lets callers bypass the registry entirely
 // by leaving Provider empty and specifying BaseURL + Model directly.
 func TestNewOpenAIEngineRawMode(t *testing.T) {

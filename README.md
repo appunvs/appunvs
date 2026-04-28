@@ -5,7 +5,7 @@
 
 面向中国市场。后端全栈 Go + SQLite + Redis；前端 **iOS + Android 原生**
 （Swift / SwiftUI · Kotlin / Compose），AI 生成的 bundle 在设备内嵌的
-独立 Hermes 沙箱里跑；AI 层走 DeepSeek（OpenAI 兼容协议，可切 火山 Ark / 阿里百炼 / 智谱 / Kimi）。
+独立 Hermes 沙箱里跑；AI 层走 DeepSeek（OpenAI 兼容协议，可切 OpenAI / 阿里百炼 / 智谱 / Kimi / MiniMax），也支持 Anthropic Claude / Google Gemini 原生 API。
 
 v1 只做移动端（iOS + Android）；桌面 / 浏览器留到 v2 看市场反馈。
 
@@ -95,17 +95,21 @@ appunvs/
 
 ## AI agent
 
-AI 层走 **OpenAI 兼容协议**，内置 5 家国内供应商的 base_url + 默认模型；
-`ai.backend` 直接填 provider id 即可切换。完整清单、切换示例、增加新供应商
-的步骤见 [docs/providers.md](docs/providers.md)。
+AI 层有三类后端：**Anthropic 原生 API**、**Gemini 原生 API**、和一切走
+**OpenAI 兼容协议**的供应商（OpenAI 自己 / 国内五家 / 自建代理）。`ai.backend`
+直接填 backend id 即可切换。完整清单、切换示例、增加新供应商的步骤见
+[docs/providers.md](docs/providers.md)。
 
-| Provider ID | 厂商 | 默认模型 |
+| Backend | 厂商 | 默认模型 |
 | --- | --- | --- |
-| `deepseek` | DeepSeek | `deepseek-chat`（可换 `deepseek-reasoner`） |
-| `volcengine` | 火山方舟 | 需指定**接入点 id** `ep-...` |
-| `moonshot` | Moonshot Kimi | `kimi-k2-turbo-preview` |
-| `zhipu` | 智谱 GLM | `glm-4.6` |
-| `dashscope` | 阿里百炼（Qwen） | `qwen3-coder-plus` |
+| `anthropic` | Anthropic Claude | `claude-opus-4-1`（可换 `claude-sonnet-4-0`） |
+| `gemini` | Google Gemini | `gemini-2.5-pro` |
+| `openai` | OpenAI | `gpt-5.5`（可换 `gpt-5.4-mini`） |
+| `deepseek` | DeepSeek | `deepseek-v4-pro` |
+| `moonshot` | Moonshot Kimi | `kimi-k2.6` |
+| `zhipu` | 智谱 GLM | `glm-4.7` |
+| `dashscope` | 阿里百炼（Qwen） | `qwen3-coder-next` |
+| `minimax` | MiniMax 海螺 | `MiniMax-M2.7` |
 
 ```yaml
 # config.yaml — 最小配置
@@ -127,7 +131,7 @@ ai:
 | Web / WS | Gin · gorilla/websocket |
 | 持久化 | SQLite（modernc，无 CGO）+ Redis 7+ |
 | Git 工作区 | go-git（bare repo per box） |
-| AI 提供商 | DeepSeek / 火山 Ark / 阿里百炼 / 智谱 / Moonshot |
+| AI 提供商 | Anthropic Claude / Google Gemini / OpenAI / DeepSeek / 阿里百炼 / 智谱 / Moonshot / MiniMax |
 | 对象存储 | LocalFS（dev）· 火山引擎 TOS / Cloudflare R2 / S3（生产） |
 | 计费 | Stripe（海外）· 国内支付通道预留接口 |
 

@@ -14,9 +14,9 @@
 // frames terminated by a finished frame; the N model round-trips inside
 // one turn are invisible from the outside.
 //
-// Why a single engine for multiple providers: DeepSeek, Volcengine Ark,
-// Moonshot Kimi, Zhipu GLM, Dashscope Qwen all expose the same wire
-// shape.  `providers.go` curates BaseURL + default Model + API-key env
+// Why a single engine for multiple providers: DeepSeek, Moonshot Kimi,
+// Zhipu GLM, Dashscope Qwen all expose the same wire shape.
+// `providers.go` curates BaseURL + default Model + API-key env
 // conventions for each; callers pick one via `Config.Provider` (or pass
 // `BaseURL` + `Model` directly for an unlisted endpoint).
 package ai
@@ -44,9 +44,9 @@ import (
 // become defaults; any non-empty field on Config still wins.
 type Config struct {
 	// Provider selects a curated registry entry (`deepseek`,
-	// `volcengine`, `moonshot`, `zhipu`, `dashscope`).  Leave empty
-	// to use an unlisted endpoint — in that case `BaseURL` and
-	// `Model` are required.
+	// `moonshot`, `zhipu`, `dashscope`).  Leave empty to use an
+	// unlisted endpoint — in that case `BaseURL` and `Model` are
+	// required.
 	Provider string
 
 	BaseURL   string        // overrides provider default
@@ -76,8 +76,7 @@ type OpenAIEngine struct {
 // Model:
 //
 //  1. Config.{BaseURL,Model} if set — always wins.
-//  2. Registry entry for Config.Provider — if the field is populated
-//     there (e.g. Volcengine Ark has no default Model; caller must set it).
+//  2. Registry entry for Config.Provider — if the field is populated there.
 //  3. Error — BaseURL and Model must come from somewhere.
 func NewOpenAIEngine(cfg Config, ws *workspace.Store, boxSvc *box.Service, turns *store.Turns, log *zap.Logger) (*OpenAIEngine, error) {
 	if cfg.APIKey == "" {
@@ -202,7 +201,7 @@ func (e *OpenAIEngine) Run(ctx context.Context, req Request) (<-chan Frame, erro
 		// Per-turn model override (req.Model) wins over the engine's
 		// configured default; empty falls back to e.cfg.Model.  Lets a
 		// per-conversation picker on the client switch between (e.g.)
-		// deepseek-chat and deepseek-reasoner without restarting the
+		// deepseek-v4-pro and deepseek-v4-flash without restarting the
 		// relay.
 		effectiveModel := e.cfg.Model
 		if req.Model != "" {

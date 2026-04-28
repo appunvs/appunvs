@@ -8,18 +8,21 @@
 
 ## 1. 前置依赖
 
-| 工具 | 装哪儿 | 用途 |
-|---|---|---|
-| `go` ≥ 1.24 | 你的 dev 机 | 编译 relay |
-| `docker` | 你的 dev 机 | 跑 redis + sandbox image |
-| `node` 22 + `npm` | 你的 dev 机 | 构建 sandbox image（里面装 metro / RN deps） |
-| AI provider key | env var | 让 chat 真的能调模型 |
-| iOS simulator / Android emulator / 真机 | 同 wifi | 装 host app 验证 |
+| 工具                                    | 装哪儿      | 用途                                         |
+| --------------------------------------- | ----------- | -------------------------------------------- |
+| `go` ≥ 1.24                             | 你的 dev 机 | 编译 relay                                   |
+| `docker`                                | 你的 dev 机 | 跑 redis + sandbox image                     |
+| `node` 22 + `npm`                       | 你的 dev 机 | 构建 sandbox image（里面装 metro / RN deps） |
+| AI provider key                         | env var     | 让 chat 真的能调模型                         |
+| iOS simulator / Android emulator / 真机 | 同 wifi     | 装 host app 验证                             |
 
-AI provider key 三选一（按可获得性排序）：
+AI provider key（按可获得性排序）：
+
 - **DeepSeek**（[platform.deepseek.com](https://platform.deepseek.com)）—— 国内付款方便，便宜；走 OpenAI-compat 协议
 - **Anthropic Claude**（[console.anthropic.com](https://console.anthropic.com)）—— 跨境付款 + 国外网络；写代码工具调用最强
-- **火山 Ark / 阿里百炼 / Moonshot / 智谱**—— 国内同 DeepSeek 形态
+- **OpenAI**（[platform.openai.com](https://platform.openai.com)）—— GPT-5 / o4 系列
+- **Google Gemini**（[ai.google.dev](https://ai.google.dev)）—— Gemini 2.5 Pro，走原生 API
+- **阿里百炼 / Moonshot / 智谱 / MiniMax**—— 国内同 DeepSeek 形态
 
 ---
 
@@ -30,25 +33,22 @@ AI provider key 三选一（按可获得性排序）：
 ```bash
 git clone <repo>
 cd appunvs/relay
-cp .env.example .env  # 没有就直接 vim .env
+cp .env.example .env
 ```
 
-`.env` 内容示例（**不要 commit**）：
+`.env.example` 默认 `APPUNVS_AI_BACKEND=stub`（chat 回声，不打 provider），先这样起来验证线路。要真的让 AI 写代码，编辑 `.env` 取消注释相应几行：
 
 ```bash
-# 选一种 backend
+# Anthropic（跨境付款 + 国外网络，工具调用最强）
 APPUNVS_AI_BACKEND=anthropic
 APPUNVS_AI_API_KEY=sk-ant-xxx
-APPUNVS_AI_MODEL=claude-sonnet-4-6   # 可选
 
-# 或者用 DeepSeek
+# 或 DeepSeek（国内付款方便、便宜）
 # APPUNVS_AI_BACKEND=deepseek
 # APPUNVS_AI_API_KEY=sk-xxx
-# APPUNVS_AI_MODEL=deepseek-chat
-
-# 第一次跑想确认线路通就用 stub，chat 会回声
-# APPUNVS_AI_BACKEND=stub
 ```
+
+**`.env` 是 gitignored，不要 commit。** 改完 backend 重启 relay 即可生效。
 
 ### 2.2 一键拉起 relay + redis + sandbox image
 
@@ -57,6 +57,7 @@ bash scripts/dev-up.sh
 ```
 
 脚本会：
+
 1. 起 redis 容器（如已运行则跳过）
 2. 检查 `appunvs/sandbox:latest` 镜像，缺则调 `runtime/packaging/build-sandbox.sh` 现 build（**第一次 5-8 分钟，npm install RN deps**）
 3. `go run ./cmd/server` 启动 relay
@@ -65,7 +66,7 @@ bash scripts/dev-up.sh
 成功的 startup log 关键行：
 
 ```
-INFO  ai engine wired      backend=anthropic   model=claude-sonnet-4-6
+INFO  ai engine wired      backend=anthropic   model=claude-opus-4-1
 INFO  sandbox wired        backend=docker      image=appunvs/sandbox:latest
 INFO  stage pipeline wired artifact_backend=local
 INFO  relay listening      addr=:8080
@@ -85,12 +86,14 @@ curl http://localhost:8080/health
 ### 2.4 配置 host app endpoint
 
 iOS：
+
 ```swift
 // appunvs/ios/Runtime/Net/Config.swift
 static let relayBaseURL = URL(string: "http://192.168.x.x:8080")!  // 你的 LAN IP
 ```
 
 Android：
+
 ```kotlin
 // appunvs/android/.../net/NetConfig.kt
 const val relayBaseURL = "http://192.168.x.x:8080"
@@ -115,27 +118,28 @@ cd appunvs/android && gradle installDebug
 
 ---
 
-## 3. 三种 AI backend 速查
+## 3. AI backend 速查
 
-| Backend | env var 配法 | 模型默认 |
-|---|---|---|
-| `stub` | 只设 `APPUNVS_AI_BACKEND=stub` | 无 —— chat 回声 |
-| `anthropic` | `APPUNVS_AI_BACKEND=anthropic` + `APPUNVS_AI_API_KEY=sk-ant-...` | `claude-sonnet-4-6` |
-| `deepseek` | `APPUNVS_AI_BACKEND=deepseek` + `APPUNVS_AI_API_KEY=sk-...` | `deepseek-chat` |
-| `volcengine` | `..._BACKEND=volcengine` + `..._API_KEY=...` + `..._MODEL=ep-...` | 无（必填） |
-| `moonshot` / `zhipu` / `dashscope` | 同上模式 | 各家固定值 |
-| 自定义 OpenAI-compat | `..._BACKEND=openai-compatible` + `..._BASE_URL=...` + `..._MODEL=...` + `..._API_KEY=...` | 无（必填） |
+| Backend                                       | env var 配法                                                                               | 模型默认             |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------ | -------------------- |
+| `stub`                                        | 只设 `APPUNVS_AI_BACKEND=stub`                                                             | 无 —— chat 回声      |
+| `anthropic`                                   | `APPUNVS_AI_BACKEND=anthropic` + `APPUNVS_AI_API_KEY=sk-ant-...`                           | `claude-opus-4-1`    |
+| `gemini`                                      | `APPUNVS_AI_BACKEND=gemini` + `APPUNVS_AI_API_KEY=...`                                     | `gemini-2.5-pro`     |
+| `openai`                                      | `APPUNVS_AI_BACKEND=openai` + `APPUNVS_AI_API_KEY=sk-...`                                  | `gpt-5.5`            |
+| `deepseek`                                    | `APPUNVS_AI_BACKEND=deepseek` + `APPUNVS_AI_API_KEY=sk-...`                                | `deepseek-v4-pro`    |
+| `moonshot` / `zhipu` / `dashscope` / `minimax`| 同上模式                                                                                   | 各家固定值           |
+| 自定义 OpenAI-compat                          | `..._BACKEND=openai-compatible` + `..._BASE_URL=...` + `..._MODEL=...` + `..._API_KEY=...` | 无（必填）           |
 
 ---
 
 ## 4. 文件 / 数据落在哪
 
-| 数据 | 路径（默认） | 备注 |
-|---|---|---|
-| SQLite（账号、box 元、AI turns） | `relay/data/relay.db` | 单机够用；备份直接拷文件 |
-| Box git workspaces | `relay/data/workspaces/<box_id>/` | bare repo，每个 box 一个 |
-| 编出来的 bundle artifacts | `relay/data/artifacts/<sha256>/` | content-addressed |
-| Redis 数据 | `appunvs-redis` 容器内 `/data` | 仅 Stream + seq；丢了不致命 |
+| 数据                             | 路径（默认）                      | 备注                        |
+| -------------------------------- | --------------------------------- | --------------------------- |
+| SQLite（账号、box 元、AI turns） | `relay/data/relay.db`             | 单机够用；备份直接拷文件    |
+| Box git workspaces               | `relay/data/workspaces/<box_id>/` | bare repo，每个 box 一个    |
+| 编出来的 bundle artifacts        | `relay/data/artifacts/<sha256>/`  | content-addressed           |
+| Redis 数据                       | `appunvs-redis` 容器内 `/data`    | 仅 Stream + seq；丢了不致命 |
 
 清空一切重来：`rm -rf relay/data && docker rm -f appunvs-redis`
 
@@ -143,16 +147,16 @@ cd appunvs/android && gradle installDebug
 
 ## 5. 排障 checklist
 
-| 症状 | 原因 | 修法 |
-|---|---|---|
-| `sandbox.DockerBuilder: image "appunvs/sandbox:latest" not found` | 没 build sandbox image | `bash runtime/packaging/build-sandbox.sh` |
-| `sandbox.DockerBuilder: docker not on PATH` | 容器化部署忘装 docker CLI；本机部署没装 | 直接装 docker 或换 `APPUNVS_SANDBOX_BACKEND=stub` |
-| `ai: AnthropicConfig.APIKey required` | 没设 `APPUNVS_AI_API_KEY` | `.env` 写好 / export |
-| `ai: turn aborted ... 401 Unauthorized` | API key 错或失效 | 控制台重生成 key |
-| `redis ping failed at startup`（warn） | redis 没起 | `docker ps | grep appunvs-redis` |
-| host app 连不上 relay | LAN IP 写错 / mac 防火墙拦了 8080 / Android 没开 cleartext | 见 §2.4 |
-| chat 流式但 publish 后 Stage 不刷新 | sandbox 真的 build 失败了，bundle URL 没更新 | 看 relay log 里 `box.publish` 那段 |
-| iOS 真机无法装 | 没配开发者账号 / 没 trust developer | Xcode → Signing & Capabilities |
+| 症状                                                              | 原因                                                       | 修法                                              |
+| ----------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------- | ------------------- |
+| `sandbox.DockerBuilder: image "appunvs/sandbox:latest" not found` | 没 build sandbox image                                     | `bash runtime/packaging/build-sandbox.sh`         |
+| `sandbox.DockerBuilder: docker not on PATH`                       | 容器化部署忘装 docker CLI；本机部署没装                    | 直接装 docker 或换 `APPUNVS_SANDBOX_BACKEND=stub` |
+| `ai: AnthropicConfig.APIKey required`                             | 没设 `APPUNVS_AI_API_KEY`                                  | `.env` 写好 / export                              |
+| `ai: turn aborted ... 401 Unauthorized`                           | API key 错或失效                                           | 控制台重生成 key                                  |
+| `redis ping failed at startup`（warn）                            | redis 没起                                                 | `docker ps                                        | grep appunvs-redis` |
+| host app 连不上 relay                                             | LAN IP 写错 / mac 防火墙拦了 8080 / Android 没开 cleartext | 见 §2.4                                           |
+| chat 流式但 publish 后 Stage 不刷新                               | sandbox 真的 build 失败了，bundle URL 没更新               | 看 relay log 里 `box.publish` 那段                |
+| iOS 真机无法装                                                    | 没配开发者账号 / 没 trust developer                        | Xcode → Signing & Capabilities                    |
 
 ---
 
