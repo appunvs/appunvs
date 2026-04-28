@@ -5,10 +5,16 @@
 //
 // Scope of this file:
 //   - DeepSeek (default) · api.deepseek.com
+//   - OpenAI            · api.openai.com
+//   - Gemini            · generativelanguage.googleapis.com (OpenAI-compat shim)
 //   - Volcengine Ark (火山方舟) · ark.cn-beijing.volces.com
 //   - Moonshot (Kimi)   · api.moonshot.cn
 //   - Zhipu (GLM)       · open.bigmodel.cn
 //   - Dashscope (Qwen)  · dashscope.aliyuncs.com
+//
+// Anthropic (Claude) is NOT here — it has its own non-OpenAI-compat
+// engine at relay/internal/ai/anthropic_engine.go and is selected via
+// `APPUNVS_AI_BACKEND=anthropic`.
 //
 // Any other OpenAI-compatible endpoint is still reachable by leaving
 // `Provider` empty and setting `BaseURL` + `Model` explicitly — the
@@ -48,6 +54,32 @@ var Providers = map[string]Provider{
 		ModelReason: "deepseek-reasoner",
 		DocsURL:     "https://api-docs.deepseek.com",
 		EnvAPIKey:   "DEEPSEEK_API_KEY",
+	},
+	"openai": {
+		ID:          "openai",
+		Name:        "OpenAI",
+		BaseURL:     "https://api.openai.com/v1",
+		// gpt-4o is the current sane chat default.  Reasoning variant is
+		// o3 / o3-mini etc. — pricing tier higher; callers opt in by
+		// setting APPUNVS_AI_MODEL explicitly.
+		ModelChat:   "gpt-4o",
+		ModelReason: "o3-mini",
+		DocsURL:     "https://platform.openai.com/docs",
+		EnvAPIKey:   "OPENAI_API_KEY",
+	},
+	"gemini": {
+		ID:   "gemini",
+		Name: "Google Gemini",
+		// Google ships an OpenAI-compatible shim at
+		// /v1beta/openai/.  Native Gemini API has its own protocol
+		// (no OpenAI-compat) that we'd need a separate engine for —
+		// the shim lets us reuse the existing OpenAIEngine code path.
+		BaseURL:     "https://generativelanguage.googleapis.com/v1beta/openai",
+		ModelChat:   "gemini-2.5-pro",
+		ModelReason: "gemini-2.5-pro", // unified; same model handles reasoning via system prompt
+		DocsURL:     "https://ai.google.dev/gemini-api/docs/openai",
+		Note:        "Uses Google's OpenAI-compat shim. For native Gemini features (function calling shape, multimodal), wait for a dedicated GeminiEngine.",
+		EnvAPIKey:   "GEMINI_API_KEY",
 	},
 	"volcengine": {
 		ID:      "volcengine",

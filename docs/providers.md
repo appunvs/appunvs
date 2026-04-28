@@ -1,16 +1,23 @@
 # AI Providers
 
-appunvs 的 AI agent 走 OpenAI 兼容协议，支持通过配置切换后端供应商。内置
-五家主流国内 LLM 的连接信息（BaseURL / 默认 model / API key 约定），但
-任何其他 OpenAI 兼容端点都可以通过直接提供 `base_url` + `model` 接入。
+appunvs 的 AI agent 有**两条 engine 通道**：
 
-代码入口：[`relay/internal/ai/providers.go`](../relay/internal/ai/providers.go)
+1. **OpenAI-compatible 通道** —— 走 OpenAI Chat Completions 协议，覆盖国内国外大部分 LLM
+2. **Anthropic 通道** —— 直连 Claude，独立 engine（Anthropic Messages API 格式不一样）
 
-## 已内置的供应商
+通过 `APPUNVS_AI_BACKEND` 切换。
+
+代码入口：
+- [`relay/internal/ai/providers.go`](../relay/internal/ai/providers.go) —— OpenAI-compat 通道的 provider 注册表
+- [`relay/internal/ai/anthropic_engine.go`](../relay/internal/ai/anthropic_engine.go) —— Anthropic 独立 engine
+
+## OpenAI-compat 通道：内置 provider
 
 | Provider ID | 厂商 | 默认模型 | 备注 |
 | --- | --- | --- | --- |
 | `deepseek` | DeepSeek | `deepseek-chat` | 默认选择，最便宜；`deepseek-reasoner` 可换思考模式 |
+| `openai` | OpenAI | `gpt-4o` | `o3-mini` / `o3` 可换 reasoning |
+| `gemini` | Google Gemini | `gemini-2.5-pro` | 走 Google 提供的 OpenAI-compat shim；想用 native Gemini API 等独立 GeminiEngine |
 | `volcengine` | 火山方舟（Ark） | *需用户指定* | 用的是账号下自建的**接入点 id**（`ep-YYYYMMDD-xxx`），需在 Ark 控制台先创建 |
 | `moonshot` | Moonshot（Kimi） | `kimi-k2-turbo-preview` | 长 context，工具调用稳 |
 | `zhipu` | 智谱 GLM | `glm-4.6` | 国内 agent 生态里工具调用最稳的一档 |
@@ -21,6 +28,8 @@ appunvs 的 AI agent 走 OpenAI 兼容协议，支持通过配置切换后端供
 | Provider | 环境变量（约定） |
 | --- | --- |
 | DeepSeek   | `DEEPSEEK_API_KEY` |
+| OpenAI     | `OPENAI_API_KEY` |
+| Gemini     | `GEMINI_API_KEY` |
 | Volcengine | `ARK_API_KEY` |
 | Moonshot   | `MOONSHOT_API_KEY` |
 | Zhipu      | `ZHIPU_API_KEY` |
@@ -28,6 +37,29 @@ appunvs 的 AI agent 走 OpenAI 兼容协议，支持通过配置切换后端供
 
 > appunvs 本身读 `APPUNVS_AI_API_KEY` / `APPUNVS_AI_MODEL` 这种统一命名；
 > 上面的变量只是各家 SDK / CLI 的默认约定，方便复用现有环境。
+
+## Anthropic 通道：直连 Claude
+
+跟 OpenAI-compat 通道平行的另一条路 —— Anthropic Messages API 协议跟 OpenAI 不兼容（system prompt 是 top-level 字段、tool result 是 user message 内的 content block 等等），所以是独立 engine。
+
+| Backend | 默认模型 | 备注 |
+| --- | --- | --- |
+| `anthropic` | `claude-sonnet-4-6` | 直连 Anthropic Messages API |
+
+可换模型：`claude-opus-4-7` / `claude-haiku-4-5-*` / `claude-sonnet-4-5` 等，在 `APPUNVS_AI_MODEL` 里指定。
+
+环境变量约定：`ANTHROPIC_API_KEY`（appunvs 仍读 `APPUNVS_AI_API_KEY`）。
+
+切换示例：
+```yaml
+ai:
+  backend: anthropic
+  api_key: ${ANTHROPIC_API_KEY}
+  # model 留空 → 默认 claude-sonnet-4-6
+  # model: claude-opus-4-7        # 顶配，token 单价 ~30x DeepSeek
+```
+
+> 想用 Claude 又想要 OpenAI-compat 接口？通过 `openai-compatible` backend 指向第三方代理（如 [OpenRouter](https://openrouter.ai/)、[Helicone](https://helicone.ai/)）。但**直连 Anthropic 通道有 cache_control（system prompt + tools 缓存 ~90% 折扣）和原生 tool use 支持**，强烈推荐直连。
 
 ## 配置
 
@@ -53,6 +85,29 @@ ai:
   backend: deepseek
   api_key: ${DEEPSEEK_API_KEY}
 ```
+
+**OpenAI（GPT-4o / o3）**：
+
+```yaml
+ai:
+  backend: openai
+  api_key: ${OPENAI_API_KEY}
+  # model 留空 → 默认 gpt-4o；要 reasoning 模型：
+  # model: o3-mini
+  # model: o3
+```
+
+**Google Gemini**：
+
+```yaml
+ai:
+  backend: gemini
+  api_key: ${GEMINI_API_KEY}
+  # model 留空 → 默认 gemini-2.5-pro；要 flash 提速：
+  # model: gemini-2.5-flash
+```
+
+> 走的是 Google 的 OpenAI-compat shim。如果你需要原生 Gemini 函数调用 / 多模态特性，等专门的 GeminiEngine。
 
 **智谱 GLM**：
 

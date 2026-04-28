@@ -65,11 +65,14 @@ func TestResolveUnknown(t *testing.T) {
 	}
 }
 
-// TestRequiredProvidersPresent guards the five launch providers.  Adding
-// a provider is fine; removing one of these five is a ship-blocking
-// change that must be discussed.
+// TestRequiredProvidersPresent guards the launch providers.  Adding a
+// provider is fine; removing one of these is a ship-blocking change
+// that must be discussed.
 func TestRequiredProvidersPresent(t *testing.T) {
-	required := []string{"deepseek", "volcengine", "moonshot", "zhipu", "dashscope"}
+	required := []string{
+		"deepseek", "openai", "gemini",
+		"volcengine", "moonshot", "zhipu", "dashscope",
+	}
 	for _, id := range required {
 		if _, ok := ai.Providers[id]; !ok {
 			t.Errorf("required provider %q missing from registry", id)

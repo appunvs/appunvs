@@ -16,9 +16,11 @@
 | AI provider key | env var | 让 chat 真的能调模型 |
 | iOS simulator / Android emulator / 真机 | 同 wifi | 装 host app 验证 |
 
-AI provider key 三选一（按可获得性排序）：
+AI provider key 几选一（按可获得性排序）：
 - **DeepSeek**（[platform.deepseek.com](https://platform.deepseek.com)）—— 国内付款方便，便宜；走 OpenAI-compat 协议
 - **Anthropic Claude**（[console.anthropic.com](https://console.anthropic.com)）—— 跨境付款 + 国外网络；写代码工具调用最强
+- **OpenAI GPT**（[platform.openai.com](https://platform.openai.com)）—— 跨境付款 + 国外网络；GPT-4o / o3 系列
+- **Google Gemini**（[ai.google.dev](https://ai.google.dev)）—— 跨境付款 + 国外网络；走 Google 的 OpenAI-compat shim
 - **火山 Ark / 阿里百炼 / Moonshot / 智谱**—— 国内同 DeepSeek 形态
 
 ---
@@ -122,6 +124,8 @@ cd appunvs/android && gradle installDebug
 | `stub` | 只设 `APPUNVS_AI_BACKEND=stub` | 无 —— chat 回声 |
 | `anthropic` | `APPUNVS_AI_BACKEND=anthropic` + `APPUNVS_AI_API_KEY=sk-ant-...` | `claude-sonnet-4-6` |
 | `deepseek` | `APPUNVS_AI_BACKEND=deepseek` + `APPUNVS_AI_API_KEY=sk-...` | `deepseek-chat` |
+| `openai` | `APPUNVS_AI_BACKEND=openai` + `APPUNVS_AI_API_KEY=sk-...` | `gpt-4o` |
+| `gemini` | `APPUNVS_AI_BACKEND=gemini` + `APPUNVS_AI_API_KEY=...` | `gemini-2.5-pro` |
 | `volcengine` | `..._BACKEND=volcengine` + `..._API_KEY=...` + `..._MODEL=ep-...` | 无（必填） |
 | `moonshot` / `zhipu` / `dashscope` | 同上模式 | 各家固定值 |
 | 自定义 OpenAI-compat | `..._BACKEND=openai-compatible` + `..._BASE_URL=...` + `..._MODEL=...` + `..._API_KEY=...` | 无（必填） |
