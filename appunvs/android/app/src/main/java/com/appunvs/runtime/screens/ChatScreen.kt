@@ -1,5 +1,7 @@
-// ChatScreen — header chip (BoxSwitcher) + transcript + composer.
-// Backed by ChatViewModel (real /ai/turn SSE) and BoxRepo (real /box).
+// ChatScreen — chat detail reached by drilling into a box from
+// BoxesScreen.  Header is a back-arrow + box title row (replaces the
+// old BoxSwitcher chip); body is the scrolling transcript; footer is
+// the composer.  Same store wiring as before.
 package com.appunvs.runtime.screens
 
 import androidx.compose.foundation.background
@@ -11,12 +13,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,53 +39,59 @@ import androidx.compose.ui.unit.dp
 import com.appunvs.runtime.state.BoxRepo
 import com.appunvs.runtime.state.ChatRole
 import com.appunvs.runtime.state.ChatViewModel
+import com.appunvs.runtime.theme.AppType
 import com.appunvs.runtime.theme.LocalAppColors
 import com.appunvs.runtime.theme.Spacing
 import com.appunvs.runtime.ui.Bubble
 import com.appunvs.runtime.ui.BubbleRole
-import com.appunvs.runtime.ui.BoxSwitcher
 import com.appunvs.runtime.ui.EmptyState
-import com.appunvs.runtime.ui.NewBoxSheet
 
 @Composable
 fun ChatScreen(
     boxRepo: BoxRepo,
     chat: ChatViewModel,
+    boxID: String,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalAppColors.current
     var draft by remember { mutableStateOf("") }
-    var newBoxOpen by remember { mutableStateOf(false) }
-    val activeBoxID = boxRepo.activeBox?.boxID
-    val messages = chat.messages(activeBoxID)
+    val box = boxRepo.boxes.firstOrNull { it.boxID == boxID }
+    val messages = chat.messages(boxID)
+
+    LaunchedEffect(boxID) {
+        box?.let(boxRepo::setActive)
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(colors.bgPage),
     ) {
-        // Header chip
+        // Header — back chevron + title.  Replaces the old BoxSwitcher
+        // chip now that box selection lives in the dedicated Boxes tab.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = Spacing.l.dp, vertical = Spacing.s.dp),
+                .padding(horizontal = Spacing.s.dp, vertical = Spacing.s.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            BoxSwitcher(
-                repo = boxRepo,
-                onNewBox = { newBoxOpen = true },
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "返回",
+                    tint = colors.textPrimary,
+                )
+            }
+            Text(
+                text = box?.title ?: "Box",
+                style = AppType.bodyEmphasis.copy(color = colors.textPrimary),
             )
         }
         Divider(color = colors.borderDefault)
 
         // Transcript
-        if (activeBoxID == null) {
-            EmptyState(
-                title = "选个 Box 开始",
-                hint = "每个 Box 是一个独立项目，对话历史与代码都和它绑定。",
-                modifier = Modifier.weight(1f),
-            )
-        } else if (messages.isEmpty()) {
+        if (messages.isEmpty()) {
             EmptyState(
                 title = "和 AI 说点什么",
                 hint = "比如\"做一个计数器 app\"。",
@@ -127,27 +140,14 @@ fun ChatScreen(
             Button(
                 onClick = {
                     val t = draft.trim()
-                    val box = boxRepo.activeBox
-                    if (t.isNotEmpty() && box != null) {
-                        chat.send(box.boxID, t)
+                    if (t.isNotEmpty()) {
+                        chat.send(boxID, t)
                         draft = ""
                     }
                 },
-                enabled = draft.trim().isNotEmpty()
-                    && activeBoxID != null
-                    && !chat.sending,
+                enabled = draft.trim().isNotEmpty() && !chat.sending,
             ) { Text(if (chat.sending) "…" else "发送") }
         }
-    }
-
-    if (newBoxOpen) {
-        NewBoxSheet(
-            onDismiss = { newBoxOpen = false },
-            onCreate = { title ->
-                boxRepo.create(title)
-                newBoxOpen = false
-            },
-        )
     }
 }
 

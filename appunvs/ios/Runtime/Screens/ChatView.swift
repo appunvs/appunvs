@@ -1,50 +1,39 @@
-// ChatView — Chat tab.  Header carries the BoxSwitcher chip; the body
-// is a scrolling transcript of Bubbles; the footer is the composer
-// pinned over the keyboard.
+// ChatView — chat detail screen reached by drilling into a box from
+// BoxesView (the new entry tab).  Used to be the root Chat tab; now
+// it's pushed onto BoxesView's NavigationStack.
 //
-// Backed by ChatStore (real /ai/turn SSE) and BoxStore (real /box).
+// Header: native NavigationStack back chevron + box title.  Body: the
+// scrolling transcript (Bubble rows).  Footer: composer pinned at the
+// bottom.  Same store wiring as before — ChatStore.send(boxID:text:)
+// drives the SSE stream; BoxStore.activeBox tracks the currently
+// selected box so Stage knows what to mount.
 import SwiftUI
 
 struct ChatView: View {
+    let box: BoxWire
+
     @EnvironmentObject private var boxStore: BoxStore
     @EnvironmentObject private var chatStore: ChatStore
     @State private var draft: String = ""
 
     private var messages: [ChatMessage] {
-        chatStore.messages(for: boxStore.activeBox?.boxID)
+        chatStore.messages(for: box.boxID)
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider().background(Theme.borderDefault.color)
             transcript
             composer
         }
         .background(Theme.bgPage.color)
-    }
-
-    // MARK: - Sections
-
-    private var header: some View {
-        HStack {
-            BoxSwitcher()
-            Spacer()
-        }
-        .padding(.horizontal, Spacing.l)
-        .padding(.vertical, Spacing.s)
-        .background(Theme.bgPage.color)
+        .navigationTitle(box.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { boxStore.setActive(box) }
     }
 
     @ViewBuilder
     private var transcript: some View {
-        if boxStore.activeBox == nil {
-            EmptyState(
-                title: "选个 Box 开始",
-                hint: "每个 Box 是一个独立项目，对话历史与代码都和它绑定。",
-                action: { EmptyView() }
-            )
-        } else if messages.isEmpty {
+        if messages.isEmpty {
             EmptyState(
                 title: "和 AI 说点什么",
                 hint: "比如\"做一个计数器 app\"。",
@@ -61,8 +50,6 @@ struct ChatView: View {
                     }
                     .padding(Spacing.l)
                 }
-                // 1-arg closure: iOS 16 supports only the (newValue) form.
-                // The 2-arg (oldValue, newValue) variant is iOS 17+.
                 .onChange(of: messages.count) { _ in
                     if let last = messages.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -88,7 +75,7 @@ struct ChatView: View {
                 )
             Button(action: send) {
                 Text(chatStore.sending ? "…" : "发送")
-                    .font(.body.weight(.semibold))
+                    .appFont(Typography.bodyEmphasis)
                     .foregroundStyle(.white)
                     .padding(.horizontal, Spacing.l)
                     .padding(.vertical, Spacing.s)
@@ -118,11 +105,11 @@ struct ChatView: View {
     }
 
     private var canSend: Bool {
-        !trimmed.isEmpty && boxStore.activeBox != nil && !chatStore.sending
+        !trimmed.isEmpty && !chatStore.sending
     }
 
     private func send() {
-        guard let box = boxStore.activeBox, !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { return }
         chatStore.send(boxID: box.boxID, text: trimmed)
         draft = ""
     }
