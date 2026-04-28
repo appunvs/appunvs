@@ -20,10 +20,23 @@ enum AIFrame {
 struct AITurnRequest: Encodable {
     let boxID: String
     let text: String
+    /// Optional per-turn model override.  Empty → omit from JSON so the
+    /// relay falls back to its configured engine default.
+    let model: String
 
     enum CodingKeys: String, CodingKey {
         case boxID = "box_id"
         case text
+        case model
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(boxID, forKey: .boxID)
+        try c.encode(text, forKey: .text)
+        if !model.isEmpty {
+            try c.encode(model, forKey: .model)
+        }
     }
 }
 
@@ -48,8 +61,10 @@ final class AISSEClient: @unchecked Sendable {
 
     /// Streams frames for a single AI turn.  The stream finishes after a
     /// `.finished` or `.error` frame, or when the underlying connection
-    /// closes.
-    func turn(boxID: String, text: String) -> AsyncThrowingStream<AIFrame, Error> {
+    /// closes.  `model` is optional — empty means "use the engine
+    /// default"; otherwise it's the provider model id (e.g.
+    /// "deepseek-chat") forwarded to ai.Request.Model on the relay.
+    func turn(boxID: String, text: String, model: String = "") -> AsyncThrowingStream<AIFrame, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -61,7 +76,7 @@ final class AISSEClient: @unchecked Sendable {
                         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                     }
                     req.httpBody = try JSONEncoder().encode(
-                        AITurnRequest(boxID: boxID, text: text)
+                        AITurnRequest(boxID: boxID, text: text, model: model)
                     )
 
                     let (bytes, response) = try await session.bytes(for: req)

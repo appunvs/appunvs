@@ -24,6 +24,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -46,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import com.appunvs.runtime.BuildConfig
 import com.appunvs.runtime.state.AppState
 import com.appunvs.runtime.state.AuthRepo
+import com.appunvs.runtime.state.ModelCatalog
 import com.appunvs.runtime.theme.LocalAppColors
 import com.appunvs.runtime.theme.Spacing
 import com.appunvs.runtime.ui.AppBadge
@@ -93,9 +96,54 @@ fun ProfileScreen(
 
         AccountCard(auth = auth)
         UsageCard()
+        ModelCard(state = state)
         ThemeCard(state = state)
         DevicesCard(auth = auth)
         Footer(auth = auth, onShowTokens = { showTokens = true })
+    }
+}
+
+@Composable
+private fun ModelCard(state: AppState) {
+    val colors = LocalAppColors.current
+    var expanded by remember { mutableStateOf(false) }
+    val current = ModelCatalog.find(state.defaultModelID) ?: ModelCatalog.fallback
+
+    AppCard(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Text(
+                text = "默认模型",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    color = colors.textPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                ),
+            )
+            Text(
+                text = "发起新对话时使用，单次对话可在聊天页头部切换。",
+                style = MaterialTheme.typography.bodySmall.copy(color = colors.textSecondary),
+                modifier = Modifier.padding(top = 2.dp, bottom = Spacing.s.dp),
+            )
+            Box {
+                TextButton(onClick = { expanded = true }) {
+                    Text(
+                        text = "${current.name} ▾",
+                        color = colors.brandDark,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    ModelCatalog.all.forEach { m ->
+                        DropdownMenuItem(
+                            text = { Text(m.name) },
+                            onClick = {
+                                state.setDefaultModel(m.id)
+                                expanded = false
+                            },
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

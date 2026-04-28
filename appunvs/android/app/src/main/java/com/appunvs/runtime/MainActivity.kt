@@ -170,6 +170,7 @@ private fun SignedInRoot(
                     ChatScreen(
                         boxRepo = boxRepo,
                         chat = chat,
+                        appState = state,
                         boxID = openBox,
                         onBack = { chatBoxID = null },
                         modifier = tabModifier,

@@ -33,6 +33,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
     enum class ThemeOverride { SYSTEM, LIGHT, DARK }
 
     private val themeKey = stringPreferencesKey("theme.override")
+    private val modelKey = stringPreferencesKey("model.default")
     private val store: androidx.datastore.core.DataStore<Preferences> = application.dataStore
 
     /// Compose-observable mirror of the persisted override.  Updated on
@@ -40,10 +41,24 @@ class AppState(application: Application) : AndroidViewModel(application) {
     var themeOverride by mutableStateOf(ThemeOverride.SYSTEM)
         private set
 
+    /// Default chat model id (e.g. "deepseek-chat") — what the composer
+    /// uses when the user hasn't set a per-turn override on the chat
+    /// header.  Persisted via DataStore.  Unknown ids fall back to
+    /// ModelCatalog.fallback.id so a release that drops a model doesn't
+    /// strand existing users.
+    var defaultModelID by mutableStateOf(ModelCatalog.fallback.id)
+        private set
+
     init {
         viewModelScope.launch {
-            val raw = store.data.firstOrNull()?.get(themeKey)
-            themeOverride = parse(raw)
+            val prefs = store.data.firstOrNull()
+            themeOverride = parse(prefs?.get(themeKey))
+            val raw = prefs?.get(modelKey).orEmpty()
+            defaultModelID = if (raw.isNotEmpty() && ModelCatalog.find(raw) != null) {
+                raw
+            } else {
+                ModelCatalog.fallback.id
+            }
         }
     }
 
@@ -51,6 +66,13 @@ class AppState(application: Application) : AndroidViewModel(application) {
         themeOverride = value
         viewModelScope.launch {
             store.edit { prefs -> prefs[themeKey] = value.name }
+        }
+    }
+
+    fun setDefaultModel(id: String) {
+        defaultModelID = id
+        viewModelScope.launch {
+            store.edit { prefs -> prefs[modelKey] = id }
         }
     }
 

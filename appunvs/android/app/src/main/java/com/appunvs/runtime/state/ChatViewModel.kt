@@ -38,7 +38,7 @@ class ChatViewModel(private val sse: AISSEClient) : ViewModel() {
     fun messages(boxID: String?): List<ChatMessage> =
         if (boxID == null) emptyList() else transcripts[boxID] ?: emptyList()
 
-    fun send(boxID: String, text: String) {
+    fun send(boxID: String, text: String, model: String = "") {
         currentJob?.cancel()
         sending = true
         val transcript = transcripts.getOrPut(boxID) { mutableListOf<ChatMessage>().toMutableStateList() }
@@ -47,7 +47,7 @@ class ChatViewModel(private val sse: AISSEClient) : ViewModel() {
         transcript += assistant
 
         currentJob = viewModelScope.launch {
-            sse.turn(boxID, text)
+            sse.turn(boxID, text, model)
                 .catch { e ->
                     finalize(boxID, assistant.id)
                     appendSystem(boxID, "× ${e.message ?: e.javaClass.simpleName}")

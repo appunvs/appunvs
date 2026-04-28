@@ -20,6 +20,7 @@ struct ProfileView: View {
                 VStack(spacing: Spacing.l) {
                     accountCard
                     usageCard
+                    modelCard
                     themeCard
                     devicesCard
                     footer
@@ -80,6 +81,30 @@ struct ProfileView: View {
                     .foregroundStyle(Theme.textPrimary.color)
                 QuotaRow(label: "对话", used: 0, cap: 300)
                 QuotaRow(label: "存储", used: 0, cap: 5_120, unit: "MB")
+            }
+        }
+    }
+
+    /// Default-model picker.  v0 catalog has one entry (DeepSeek Chat); the
+    /// UI is full-fidelity so adding GPT / Claude / Gemini to
+    /// ModelCatalog surfaces them automatically.  Per-turn override
+    /// lives on the chat header chip; this card is the global default.
+    private var modelCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: Spacing.s) {
+                Text("默认模型")
+                    .font(.headline)
+                    .foregroundStyle(Theme.textPrimary.color)
+                Text("发起新对话时使用，单次对话可在聊天页头部切换。")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary.color)
+                Picker("默认模型", selection: $state.defaultModelID) {
+                    ForEach(ModelCatalog.all) { m in
+                        Text(m.name).tag(m.id)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(Theme.brandDark.color)
             }
         }
     }

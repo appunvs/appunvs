@@ -54,7 +54,7 @@ final class ChatStore: ObservableObject {
         return messagesByBox[id] ?? []
     }
 
-    func send(boxID: String, text: String) {
+    func send(boxID: String, text: String, model: String = "") {
         currentTask?.cancel()
         sending = true
         var transcript = messagesByBox[boxID] ?? []
@@ -67,7 +67,7 @@ final class ChatStore: ObservableObject {
         let assistantID = assistant.id
         currentTask = Task {
             do {
-                for try await frame in sse.turn(boxID: boxID, text: text) {
+                for try await frame in sse.turn(boxID: boxID, text: text, model: model) {
                     switch frame {
                     case .token(_, let text):
                         appendToken(boxID: boxID, id: assistantID, text: text)
