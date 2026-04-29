@@ -38,6 +38,7 @@ import (
 
 	"github.com/appunvs/appunvs/relay/internal/box"
 	"github.com/appunvs/appunvs/relay/internal/store"
+	pricing "github.com/appunvs/appunvs/relay/internal/usage"
 	"github.com/appunvs/appunvs/relay/internal/workspace"
 )
 
@@ -202,8 +203,10 @@ func (e *GeminiEngine) Run(ctx context.Context, req Request) (<-chan Frame, erro
 			BoxID:      req.BoxID,
 			UserText:   req.Text,
 			Messages:   string(rowMessages),
+			Model:      effectiveModel,
 			TokensIn:   tokensIn,
 			TokensOut:  tokensOut,
+			CostCents:  pricing.CostCents(effectiveModel, tokensIn, tokensOut),
 			StopReason: lastFinish,
 			CreatedAt:  time.Now().UnixMilli(),
 		}); err != nil {

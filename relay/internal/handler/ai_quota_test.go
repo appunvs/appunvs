@@ -80,7 +80,7 @@ func newQuotaRig(t *testing.T, plan usage.Plan) *quotaTestRig {
 		Engine:  ai.NewStub(),
 		Box:     boxSvc,
 		Log:     log,
-		Quota:   usage.NewQuota(st.Turns()),
+		Quota:   usage.NewQuota(st.Turns(), st.Boxes(), st.Boxes()),
 		PlanFor: func(_ string) usage.Plan { return plan },
 	}
 
@@ -96,8 +96,9 @@ func newQuotaRig(t *testing.T, plan usage.Plan) *quotaTestRig {
 }
 
 // seedTurns inserts n turn rows under the rig's box at given offsets
-// in the past, so the rolling counts can be exercised.
-func (r *quotaTestRig) seedTurns(t *testing.T, n int, ageEach time.Duration) {
+// in the past, so the rolling counts can be exercised.  costEach is
+// the per-turn cost_cents — total seeded LLM spend is n * costEach.
+func (r *quotaTestRig) seedTurns(t *testing.T, n int, ageEach time.Duration, costEach int64) {
 	t.Helper()
 	now := time.Now().UTC()
 	for i := 0; i < n; i++ {
@@ -106,6 +107,8 @@ func (r *quotaTestRig) seedTurns(t *testing.T, n int, ageEach time.Duration) {
 			BoxID:      r.box,
 			UserText:   "seed",
 			Messages:   "[]",
+			Model:      "deepseek-chat",
+			CostCents:  costEach,
 			StopReason: "end_turn",
 			CreatedAt:  now.Add(-ageEach * time.Duration(i+1)).UnixMilli(),
 		}); err != nil {
@@ -131,7 +134,9 @@ func (r *quotaTestRig) post(t *testing.T) *http.Response {
 // the SSE stream behaves like the unguarded path.
 func TestAITurn_QuotaAllowsBelowCap(t *testing.T) {
 	rig := newQuotaRig(t, usage.Plans[usage.PlanFree])
-	rig.seedTurns(t, 5, time.Hour) // 5 turns << Free's 20/5d cap
+	// Free's LLM 5d budget is 50 cents (¥0.50); 5 turns × 1 cent
+	// = 5 cents leaves plenty of headroom.
+	rig.seedTurns(t, 5, time.Hour, 1)
 
 	rsp := rig.post(t)
 	defer func() { _ = rsp.Body.Close() }()
@@ -144,14 +149,14 @@ func TestAITurn_QuotaAllowsBelowCap(t *testing.T) {
 	}
 }
 
-// TestAITurn_Quota5dCapReturns429 — once the rolling-5d window is
+// TestAITurn_QuotaLLM5dCapReturns429 — once the LLM 5d budget is
 // saturated, the gate must short-circuit before invoking the engine.
-func TestAITurn_Quota5dCapReturns429(t *testing.T) {
+func TestAITurn_QuotaLLM5dCapReturns429(t *testing.T) {
 	plan := usage.Plans[usage.PlanFree]
 	rig := newQuotaRig(t, plan)
-	// Fill the 5d window up to the cap; ageEach=1h keeps every seed
-	// inside the rolling 5d boundary.
-	rig.seedTurns(t, plan.TurnsPer5d, time.Hour)
+	// Fill the 5d window up to the cap; one big "expensive" turn
+	// equal to the entire budget is enough to trip the gate.
+	rig.seedTurns(t, 1, time.Hour, int64(plan.LLMBudgetCentsPer5d))
 
 	rsp := rig.post(t)
 	defer func() { _ = rsp.Body.Close() }()
@@ -159,7 +164,6 @@ func TestAITurn_Quota5dCapReturns429(t *testing.T) {
 		body, _ := io.ReadAll(rsp.Body)
 		t.Fatalf("status = %d, want 429; body=%s", rsp.StatusCode, body)
 	}
-	// Retry-After must be set and parse as a positive integer.
 	ra := rsp.Header.Get("Retry-After")
 	n, err := strconv.Atoi(ra)
 	if err != nil {
@@ -169,16 +173,14 @@ func TestAITurn_Quota5dCapReturns429(t *testing.T) {
 		t.Errorf("Retry-After = %d, want >=1", n)
 	}
 
-	// Body should explain which window fired so the client can render
-	// "weekly cap" vs "monthly cap" without guessing.
 	var body struct {
 		Error      string `json:"error"`
 		LimitedBy  string `json:"limited_by"`
 		Plan       string `json:"plan"`
 		RetryAfter int    `json:"retry_after"`
 		Used       struct {
-			Last5d    int64 `json:"last_5d"`
-			ThisMonth int64 `json:"this_month"`
+			LLMCentsLast5d    int64 `json:"llm_cents_last_5d"`
+			LLMCentsThisMonth int64 `json:"llm_cents_this_month"`
 		} `json:"used"`
 	}
 	if err := json.NewDecoder(rsp.Body).Decode(&body); err != nil {
@@ -187,14 +189,15 @@ func TestAITurn_Quota5dCapReturns429(t *testing.T) {
 	if body.Error != "plan_exhausted" {
 		t.Errorf("error = %q, want plan_exhausted", body.Error)
 	}
-	if body.LimitedBy != "5d" {
-		t.Errorf("limited_by = %q, want 5d", body.LimitedBy)
+	if body.LimitedBy != "llm_5d" {
+		t.Errorf("limited_by = %q, want llm_5d", body.LimitedBy)
 	}
 	if body.Plan != "free" {
 		t.Errorf("plan = %q, want free", body.Plan)
 	}
-	if body.Used.Last5d < int64(plan.TurnsPer5d) {
-		t.Errorf("used.last_5d = %d, want >= %d", body.Used.Last5d, plan.TurnsPer5d)
+	if body.Used.LLMCentsLast5d < int64(plan.LLMBudgetCentsPer5d) {
+		t.Errorf("used.llm_cents_last_5d = %d, want >= %d",
+			body.Used.LLMCentsLast5d, plan.LLMBudgetCentsPer5d)
 	}
 }
 
@@ -212,9 +215,9 @@ func TestAITurn_QuotaDisabledWhenNil(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
-	// Seed enough rows to bust Free's caps — without the gate, the
+	// Seed enough cost to bust Free's caps — without the gate, the
 	// engine still serves the request normally.
-	rig.seedTurns(t, 100, time.Hour)
+	rig.seedTurns(t, 100, time.Hour, 100)
 
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/ai/turn",
 		strings.NewReader(`{"box_id":"`+rig.box+`","text":"hi"}`))
@@ -235,7 +238,9 @@ func TestAITurn_QuotaDisabledWhenNil(t *testing.T) {
 // gate enabled, the request must succeed.
 func TestAITurn_BYOKBypassesGate(t *testing.T) {
 	rig := newQuotaRig(t, usage.Plans[usage.PlanBYOK])
-	rig.seedTurns(t, 1000, time.Hour) // would bust every other tier
+	// Massive seeded cost would bust every other tier; -1 LLM cap
+	// on BYOK should pass through anyway.
+	rig.seedTurns(t, 100, time.Hour, 10000)
 
 	rsp := rig.post(t)
 	defer func() { _ = rsp.Body.Close() }()

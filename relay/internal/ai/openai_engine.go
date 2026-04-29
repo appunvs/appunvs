@@ -35,6 +35,7 @@ import (
 
 	"github.com/appunvs/appunvs/relay/internal/box"
 	"github.com/appunvs/appunvs/relay/internal/store"
+	pricing "github.com/appunvs/appunvs/relay/internal/usage"
 	"github.com/appunvs/appunvs/relay/internal/workspace"
 )
 
@@ -254,15 +255,18 @@ func (e *OpenAIEngine) Run(ctx context.Context, req Request) (<-chan Frame, erro
 		}
 
 		// Persist the completed turn.  Store the full messages chain so
-		// the next turn can replay it verbatim.
+		// the next turn can replay it verbatim, plus the model id +
+		// pre-computed RMB-cents cost the LLM-quota gate sums against.
 		rowMessages, _ := json.Marshal(messages)
 		if err := e.turns.Insert(runCtx, store.Turn{
 			ID:         turnID,
 			BoxID:      req.BoxID,
 			UserText:   req.Text,
 			Messages:   string(rowMessages),
+			Model:      effectiveModel,
 			TokensIn:   tokensIn,
 			TokensOut:  tokensOut,
+			CostCents:  pricing.CostCents(effectiveModel, tokensIn, tokensOut),
 			StopReason: lastFinish,
 			CreatedAt:  time.Now().UnixMilli(),
 		}); err != nil {

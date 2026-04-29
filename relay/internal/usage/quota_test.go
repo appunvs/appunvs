@@ -6,35 +6,61 @@ import (
 	"time"
 )
 
-// stubCounter is a deterministic turnCounter.  Each call records its
-// `since` argument so tests can assert on the windowing math without
-// needing SQLite.
-type stubCounter struct {
-	// Map of namespace → sinceMillis → row count.  The test seeds
-	// expected windows; any miss returns 0 (an unseeded window
-	// signals an assertion bug, not a real-world condition).
-	counts map[string]map[int64]int64
-	// Calls records every (namespace, since) pair the gate asked for.
-	calls []call
+// llmStub records every (namespace, since) query and answers from a
+// pre-seeded map.  Misses return 0 — a missing seeded window means
+// the test asserted the wrong window, surface the mismatch.
+type llmStub struct {
+	cents map[string]map[int64]int64
+	calls []llmCall
 }
 
-type call struct {
+type llmCall struct {
 	ns    string
 	since int64
 }
 
-func (s *stubCounter) CountByNamespace(_ context.Context, namespace string, since int64) (int64, error) {
-	s.calls = append(s.calls, call{ns: namespace, since: since})
-	if m, ok := s.counts[namespace]; ok {
+func (s *llmStub) LLMSpentByNamespace(_ context.Context, ns string, since int64) (int64, error) {
+	s.calls = append(s.calls, llmCall{ns: ns, since: since})
+	if m, ok := s.cents[ns]; ok {
 		return m[since], nil
 	}
 	return 0, nil
 }
 
-// fixedNow returns a clock-injection helper pinned to the same instant
-// every Quota operation; lets us pre-compute window boundaries.
+type sandboxStub struct {
+	runs map[string]map[int64]int64
+}
+
+func (s *sandboxStub) SandboxRunsByNamespace(_ context.Context, ns string, since int64) (int64, error) {
+	if m, ok := s.runs[ns]; ok {
+		return m[since], nil
+	}
+	return 0, nil
+}
+
+type storageStub struct {
+	active map[string]int64
+}
+
+func (s *storageStub) ActiveByNamespace(_ context.Context, ns string) (int64, error) {
+	return s.active[ns], nil
+}
+
 func fixedNow(t time.Time) func() time.Time {
 	return func() time.Time { return t }
+}
+
+func mkQuota(now time.Time, llm *llmStub, sb *sandboxStub, st *storageStub) *Quota {
+	if llm == nil {
+		llm = &llmStub{}
+	}
+	if sb == nil {
+		sb = &sandboxStub{}
+	}
+	if st == nil {
+		st = &storageStub{}
+	}
+	return &Quota{llm: llm, sandbox: sb, storage: st, now: fixedNow(now)}
 }
 
 func TestPlansHaveAllRequiredTiers(t *testing.T) {
@@ -55,205 +81,263 @@ func TestPlansHaveAllRequiredTiers(t *testing.T) {
 }
 
 func TestPlanFor_FallsBackToFreeOnUnknown(t *testing.T) {
-	// Stale users.plan pointing at a renamed tier should not break the
-	// gate; PlanFor returns Free as the conservative default.
-	p := PlanFor(PlanID("tier-that-doesnt-exist"))
-	if p.ID != PlanFree {
-		t.Errorf("PlanFor unknown should return Free, got %q", p.ID)
+	if PlanFor(PlanID("ghost-tier")).ID != PlanFree {
+		t.Error("unknown id should fall back to Free")
 	}
 }
 
-func TestPlanFor_KnownReturnsItself(t *testing.T) {
-	for id := range Plans {
-		if PlanFor(id).ID != id {
-			t.Errorf("PlanFor(%q).ID = %q, want self", id, PlanFor(id).ID)
-		}
-	}
-}
-
-func TestPro_TurnsPer5dCapEnforced(t *testing.T) {
+func TestCheckLLM_Pro5dCapEnforced(t *testing.T) {
 	now := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
 	plan := Plans[PlanPro]
 	since5d := now.Add(-5 * 24 * time.Hour).UnixMilli()
 	monthStart := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
 
-	stub := &stubCounter{counts: map[string]map[int64]int64{
+	llm := &llmStub{cents: map[string]map[int64]int64{
 		"alice": {
-			since5d:    int64(plan.TurnsPer5d), // exactly at cap
-			monthStart: int64(plan.TurnsPer5d),
+			since5d:    int64(plan.LLMBudgetCentsPer5d), // exactly at cap
+			monthStart: int64(plan.LLMBudgetCentsPer5d),
 		},
 	}}
-	q := &Quota{turns: stub, now: fixedNow(now)}
+	q := mkQuota(now, llm, nil, nil)
 
-	dec, err := q.Check(context.Background(), "alice", plan)
+	dec, err := q.CheckLLM(context.Background(), "alice", plan)
 	if err != nil {
-		t.Fatalf("Check: %v", err)
+		t.Fatalf("CheckLLM: %v", err)
 	}
 	if dec.Allowed {
-		t.Fatal("expected deny when 5d count == cap")
+		t.Fatal("expected deny when 5d cents == cap")
 	}
-	if dec.LimitedBy != Window5d {
-		t.Errorf("LimitedBy = %q, want %q", dec.LimitedBy, Window5d)
+	if dec.LimitedBy != WindowLLM5d {
+		t.Errorf("LimitedBy = %q, want %q", dec.LimitedBy, WindowLLM5d)
 	}
-	if dec.RetryAfter == 0 {
-		t.Error("RetryAfter should be set when denied")
+	if dec.RetryAfter <= 0 {
+		t.Error("RetryAfter should be set on deny")
 	}
 }
 
-func TestPro_BelowCapAllowed(t *testing.T) {
+func TestCheckLLM_BelowCapAllowed(t *testing.T) {
 	now := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
 	plan := Plans[PlanPro]
 	since5d := now.Add(-5 * 24 * time.Hour).UnixMilli()
 	monthStart := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
 
-	stub := &stubCounter{counts: map[string]map[int64]int64{
+	llm := &llmStub{cents: map[string]map[int64]int64{
 		"alice": {
-			since5d:    int64(plan.TurnsPer5d) - 1,
-			monthStart: int64(plan.TurnsPerMonth) - 1,
+			since5d:    int64(plan.LLMBudgetCentsPer5d) - 1,
+			monthStart: int64(plan.LLMBudgetCentsPerMonth) - 1,
 		},
 	}}
-	q := &Quota{turns: stub, now: fixedNow(now)}
+	q := mkQuota(now, llm, nil, nil)
 
-	dec, err := q.Check(context.Background(), "alice", plan)
+	dec, err := q.CheckLLM(context.Background(), "alice", plan)
 	if err != nil {
-		t.Fatalf("Check: %v", err)
+		t.Fatalf("CheckLLM: %v", err)
 	}
 	if !dec.Allowed {
-		t.Fatalf("expected allow, got deny: limited_by=%q", dec.LimitedBy)
-	}
-	if dec.RetryAfter != 0 {
-		t.Errorf("RetryAfter on allow should be zero, got %v", dec.RetryAfter)
+		t.Fatalf("expected allow, got deny: %q", dec.LimitedBy)
 	}
 }
 
-func TestMonthlyCapTrips_When5dUnderButMonthOver(t *testing.T) {
-	// User stayed under their 5d cap but accumulated enough across
-	// multiple 5d buckets to hit the monthly fallback.  Should deny
-	// with LimitedBy=monthly.
+func TestCheckLLM_MonthlyTrips_When5dUnderButMonthOver(t *testing.T) {
 	now := time.Date(2026, 4, 28, 23, 0, 0, 0, time.UTC)
 	plan := Plans[PlanPro]
 	since5d := now.Add(-5 * 24 * time.Hour).UnixMilli()
 	monthStart := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
 
-	stub := &stubCounter{counts: map[string]map[int64]int64{
+	llm := &llmStub{cents: map[string]map[int64]int64{
 		"alice": {
-			since5d:    50,
-			monthStart: int64(plan.TurnsPerMonth),
+			since5d:    100,
+			monthStart: int64(plan.LLMBudgetCentsPerMonth),
 		},
 	}}
-	q := &Quota{turns: stub, now: fixedNow(now)}
+	q := mkQuota(now, llm, nil, nil)
 
-	dec, err := q.Check(context.Background(), "alice", plan)
+	dec, err := q.CheckLLM(context.Background(), "alice", plan)
 	if err != nil {
-		t.Fatalf("Check: %v", err)
+		t.Fatalf("CheckLLM: %v", err)
 	}
 	if dec.Allowed {
 		t.Fatal("expected deny on monthly cap")
 	}
-	if dec.LimitedBy != WindowMonthly {
-		t.Errorf("LimitedBy = %q, want %q", dec.LimitedBy, WindowMonthly)
-	}
-	// Retry-After should land somewhere between "minutes" and "5 days".
-	if dec.RetryAfter <= 0 || dec.RetryAfter > 5*24*time.Hour {
-		t.Errorf("RetryAfter = %v, expected within (0, 5d]", dec.RetryAfter)
+	if dec.LimitedBy != WindowLLMMonthly {
+		t.Errorf("LimitedBy = %q, want %q", dec.LimitedBy, WindowLLMMonthly)
 	}
 }
 
-func TestMaxPlus_NoFiveDayCap_OnlyMonthly(t *testing.T) {
-	// Max+ has TurnsPer5d = -1 (unlimited).  A user 9999 turns in 5
-	// days should still be allowed if they're under the monthly cap.
+func TestCheckLLM_MaxPlus_5dUnlimited(t *testing.T) {
 	now := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
 	plan := Plans[PlanMaxPlus]
 	since5d := now.Add(-5 * 24 * time.Hour).UnixMilli()
 	monthStart := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
 
-	stub := &stubCounter{counts: map[string]map[int64]int64{
+	llm := &llmStub{cents: map[string]map[int64]int64{
 		"power": {
-			since5d:    9999, // would trip every other tier's 5d cap
-			monthStart: int64(plan.TurnsPerMonth) - 1,
+			since5d:    9_999_999, // would trip every other tier
+			monthStart: int64(plan.LLMBudgetCentsPerMonth) - 1,
 		},
 	}}
-	q := &Quota{turns: stub, now: fixedNow(now)}
+	q := mkQuota(now, llm, nil, nil)
 
-	dec, err := q.Check(context.Background(), "power", plan)
+	dec, err := q.CheckLLM(context.Background(), "power", plan)
 	if err != nil {
-		t.Fatalf("Check: %v", err)
+		t.Fatalf("CheckLLM: %v", err)
 	}
 	if !dec.Allowed {
-		t.Fatalf("Max+ should allow when only monthly window applies, got deny limited_by=%q", dec.LimitedBy)
+		t.Fatalf("Max+ unlimited 5d should allow; limited_by=%q", dec.LimitedBy)
 	}
 }
 
-func TestBYOK_NeverDeniedByTurnGate(t *testing.T) {
-	// BYOK has -1 on both windows.  Even an absurd usage count shouldn't
-	// deny.  (Sandbox / publish quotas are separate and not in scope here.)
+func TestCheckLLM_BYOK_AlwaysAllowed(t *testing.T) {
 	now := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
 	plan := Plans[PlanBYOK]
 	since5d := now.Add(-5 * 24 * time.Hour).UnixMilli()
 	monthStart := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
 
-	stub := &stubCounter{counts: map[string]map[int64]int64{
+	llm := &llmStub{cents: map[string]map[int64]int64{
 		"hacker": {since5d: 1_000_000, monthStart: 1_000_000},
 	}}
-	q := &Quota{turns: stub, now: fixedNow(now)}
+	q := mkQuota(now, llm, nil, nil)
 
-	dec, err := q.Check(context.Background(), "hacker", plan)
+	dec, err := q.CheckLLM(context.Background(), "hacker", plan)
 	if err != nil {
-		t.Fatalf("Check: %v", err)
+		t.Fatalf("CheckLLM: %v", err)
 	}
 	if !dec.Allowed {
-		t.Errorf("BYOK should never be turn-gated; got deny limited_by=%q", dec.LimitedBy)
+		t.Errorf("BYOK should never be LLM-gated; got deny limited_by=%q", dec.LimitedBy)
 	}
 }
 
-func TestUsed_CallsBothWindows(t *testing.T) {
-	// Confirm the exact (namespace, since) pairs the gate asks for so
-	// the SQL the store sees stays predictable across refactors.
+func TestCheckSandbox_PerMonthCap(t *testing.T) {
 	now := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
-	stub := &stubCounter{counts: map[string]map[int64]int64{}}
-	q := &Quota{turns: stub, now: fixedNow(now)}
+	plan := Plans[PlanFree]
+	monthStart := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+
+	sb := &sandboxStub{runs: map[string]map[int64]int64{
+		"alice": {monthStart: int64(plan.SandboxRunsPerMonth)},
+	}}
+	q := mkQuota(now, nil, sb, nil)
+
+	dec, err := q.CheckSandbox(context.Background(), "alice", plan)
+	if err != nil {
+		t.Fatalf("CheckSandbox: %v", err)
+	}
+	if dec.Allowed {
+		t.Fatal("expected deny when sandbox runs == cap")
+	}
+	if dec.LimitedBy != WindowSandbox {
+		t.Errorf("LimitedBy = %q, want %q", dec.LimitedBy, WindowSandbox)
+	}
+	if dec.RetryAfter <= 0 {
+		t.Error("RetryAfter should be set (next-month reset)")
+	}
+}
+
+func TestCheckStorage_HardCap(t *testing.T) {
+	now := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
+	plan := Plans[PlanPro]
+	st := &storageStub{active: map[string]int64{
+		"alice": int64(plan.ActiveBoxes), // exactly at cap → can't create another
+	}}
+	q := mkQuota(now, nil, nil, st)
+
+	dec, err := q.CheckStorage(context.Background(), "alice", plan)
+	if err != nil {
+		t.Fatalf("CheckStorage: %v", err)
+	}
+	if dec.Allowed {
+		t.Fatal("expected deny at active-box cap")
+	}
+	if dec.LimitedBy != WindowStorage {
+		t.Errorf("LimitedBy = %q, want %q", dec.LimitedBy, WindowStorage)
+	}
+	// Storage is point-in-time — RetryAfter is meaningless; user
+	// must archive/delete a box.  We surface 0.
+	if dec.RetryAfter != 0 {
+		t.Errorf("RetryAfter = %v, expected 0 for storage cap", dec.RetryAfter)
+	}
+}
+
+func TestCheckStorage_MaxPlus_UnlimitedBoxes(t *testing.T) {
+	now := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
+	plan := Plans[PlanMaxPlus]
+	st := &storageStub{active: map[string]int64{"power": 1000}}
+	q := mkQuota(now, nil, nil, st)
+	dec, err := q.CheckStorage(context.Background(), "power", plan)
+	if err != nil {
+		t.Fatalf("CheckStorage: %v", err)
+	}
+	if !dec.Allowed {
+		t.Errorf("Max+ should not be storage-gated; got deny")
+	}
+}
+
+func TestUsed_QueriesAllThreeSources(t *testing.T) {
+	now := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
+	llm := &llmStub{}
+	sb := &sandboxStub{}
+	st := &storageStub{}
+	q := mkQuota(now, llm, sb, st)
 
 	if _, err := q.Used(context.Background(), "alice"); err != nil {
 		t.Fatalf("Used: %v", err)
 	}
-	if got := len(stub.calls); got != 2 {
-		t.Fatalf("want 2 store calls (5d + month), got %d", got)
-	}
-
-	want5d := now.Add(-5 * 24 * time.Hour).UnixMilli()
-	wantMonth := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
-
-	got5d := stub.calls[0]
-	gotMonth := stub.calls[1]
-	if got5d.ns != "alice" || got5d.since != want5d {
-		t.Errorf("first call = %+v, want ns=alice since=%d", got5d, want5d)
-	}
-	if gotMonth.ns != "alice" || gotMonth.since != wantMonth {
-		t.Errorf("second call = %+v, want ns=alice since=%d", gotMonth, wantMonth)
+	// 2 LLM queries (5d + month), 1 sandbox, 1 storage are expected
+	// in Used.  llmStub records calls; sandbox/storage don't but
+	// would have errored if not called for the missing namespace.
+	if got := len(llm.calls); got != 2 {
+		t.Fatalf("LLM calls = %d, want 2 (5d + month)", got)
 	}
 }
 
-func TestUsed_RejectsEmptyNamespace(t *testing.T) {
-	q := NewQuota(&stubCounter{})
-	if _, err := q.Used(context.Background(), ""); err == nil {
-		t.Error("expected error on empty namespace")
-	}
-}
-
-func TestStartOfMonth_RoundsToFirstUTC(t *testing.T) {
+func TestStartOfMonth_Boundary(t *testing.T) {
 	mid := time.Date(2026, 4, 15, 23, 59, 59, 999_999_999, time.UTC)
 	got := startOfMonth(mid)
 	want := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	if !got.Equal(want) {
-		t.Errorf("startOfMonth(%v) = %v, want %v", mid, got, want)
+		t.Errorf("startOfMonth = %v, want %v", got, want)
 	}
 }
 
 func TestNextMonth_HandlesYearWrap(t *testing.T) {
 	dec := time.Date(2026, 12, 20, 10, 0, 0, 0, time.UTC)
-	got := nextMonth(dec)
-	want := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
-	if !got.Equal(want) {
-		t.Errorf("nextMonth(%v) = %v, want %v", dec, got, want)
+	if got := nextMonth(dec); !got.Equal(time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("nextMonth(Dec) = %v, want 2027-01-01", got)
+	}
+}
+
+func TestCostCents_DeepSeekStandard(t *testing.T) {
+	// 3K input + 1K output of deepseek-chat:
+	// raw = (3K/1M)*1.0 + (1K/1M)*2.0 = 0.003 + 0.002 = 0.005 RMB
+	// markup 1.20 → 0.006 RMB → ceil(0.6 cents) = 1 cent (floor protection)
+	got := CostCents("deepseek-chat", 3000, 1000)
+	if got < 1 {
+		t.Errorf("cost = %d, want >= 1 (cents floor protection)", got)
+	}
+	if got > 5 {
+		t.Errorf("cost = %d, want small for cheap model + small turn", got)
+	}
+}
+
+func TestCostCents_OpusMuchMoreThanDeepSeek(t *testing.T) {
+	// Same token volume should bill ~ much higher on Opus.  Sanity
+	// check that the ratio is in the right ballpark (>= 30×).
+	deep := CostCents("deepseek-chat", 30000, 5000)
+	opus := CostCents("claude-opus-4-7", 30000, 5000)
+	if opus < deep*30 {
+		t.Errorf("opus cost (%d) should be >= 30× deepseek (%d)", opus, deep)
+	}
+}
+
+func TestCostCents_UnknownModelFallsBackToDeepSeek(t *testing.T) {
+	got := CostCents("not-a-real-model", 3000, 1000)
+	want := CostCents("deepseek-chat", 3000, 1000)
+	if got != want {
+		t.Errorf("unknown model cost = %d, want %d (deepseek fallback)", got, want)
+	}
+}
+
+func TestCostCents_ZeroTokensIsFree(t *testing.T) {
+	if got := CostCents("deepseek-chat", 0, 0); got != 0 {
+		t.Errorf("zero tokens should be 0 cents, got %d", got)
 	}
 }

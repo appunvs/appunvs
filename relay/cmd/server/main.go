@@ -302,8 +302,11 @@ func main() {
 	// regardless of whether the gate enforces.  The gate-enable flag
 	// only controls whether AIDeps.Quota is attached (i.e. /ai/turn
 	// blocks on cap) — informational reads stay live in dogfood mode
-	// so the host-shell can still render "本周 N/M" progress bars.
-	quota := usage.NewQuota(st.Turns())
+	// so the host-shell can still render Profile progress bars.
+	//
+	// Three sources because LLM lives in store.Turns while Sandbox /
+	// Storage queries live in store.Boxes (see usage.Quota docs).
+	quota := usage.NewQuota(st.Turns(), st.Boxes(), st.Boxes())
 	defaultPlan := usage.PlanFor(usage.PlanID(cfg.Pricing.DefaultPlan))
 	planFor := func(_ string) usage.Plan { return defaultPlan }
 	if cfg.Pricing.Enabled {
@@ -311,8 +314,10 @@ func main() {
 		aiDeps.PlanFor = planFor
 		logger.Info("pricing gate enabled",
 			zap.String("default_plan", string(defaultPlan.ID)),
-			zap.Int("turns_per_5d", defaultPlan.TurnsPer5d),
-			zap.Int("turns_per_month", defaultPlan.TurnsPerMonth))
+			zap.Int("llm_cents_per_5d", defaultPlan.LLMBudgetCentsPer5d),
+			zap.Int("llm_cents_per_month", defaultPlan.LLMBudgetCentsPerMonth),
+			zap.Int("sandbox_runs_per_month", defaultPlan.SandboxRunsPerMonth),
+			zap.Int("active_boxes", defaultPlan.ActiveBoxes))
 	}
 	handler.RegisterAIRoutes(r, aiDeps)
 	handler.RegisterUsageRoutes(r, handler.UsageDeps{
