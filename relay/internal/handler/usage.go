@@ -1,12 +1,14 @@
 // Package handler — GET /usage/me reports the caller's current plan
-// quota state.  Returned shape is a stable contract for the host
-// shell's Profile screen ("本周 N/M · 本月 N/M") and any future status
-// UI; bump version on any breaking change.
+// quota state across the three v3 dimensions: LLM (RMB cents),
+// Sandbox (build runs / month), Storage (active boxes).
 //
-// This endpoint is independent of cfg.Pricing.Enabled — the quota
-// gate may be off (dogfood) but the UI still wants to render
-// consumption numbers.  Auth is the same device-JWT gate /ai/turn
-// uses; ownership is implicit (you only ever read your own usage).
+// Returned shape is a stable contract for the host shell's Profile
+// screen progress bars and any future status UI; bump version on any
+// breaking change.
+//
+// Independent of cfg.Pricing.Enabled — the gate may be off (dogfood)
+// but the UI still wants to render consumption numbers.  Auth is the
+// same device-JWT gate /ai/turn uses; ownership is implicit.
 package handler
 
 import (
@@ -19,9 +21,7 @@ import (
 	"github.com/appunvs/appunvs/relay/internal/usage"
 )
 
-// UsageDeps groups everything GET /usage/me depends on.  Quota and
-// PlanFor are required (unlike AIDeps where they're optional) — this
-// route's whole purpose is to surface consumption.
+// UsageDeps groups everything GET /usage/me depends on.
 type UsageDeps struct {
 	Signer  *auth.Signer
 	Quota   *usage.Quota
@@ -29,20 +29,22 @@ type UsageDeps struct {
 	Log     *zap.Logger
 }
 
-// RegisterUsageRoutes wires GET /usage/me.  The route requires a
-// device JWT; the response is the caller's own usage and never
-// reveals other users' state.
+// RegisterUsageRoutes wires GET /usage/me.
 func RegisterUsageRoutes(r gin.IRouter, d UsageDeps) {
 	r.GET("/usage/me", usageMe(d))
 }
 
-// usageMeResponse is the JSON payload.  Numbers are int64 because
-// SQLite's COUNT(*) returns int64 and the JSON encoder follows suit;
-// host-shell decoders should mirror.
+// usageMeResponse is the JSON payload.  Three top-level dimensions
+// — LLM / Sandbox / Storage — each with a `used` and a `limit`.
+//
+// Limits of -1 mean unlimited (Max+ unlimited 5d window, BYOK both
+// LLM windows, Max+ unlimited boxes); host-shell decoders treat
+// negative values as "no cap" and render "—" or hide the bar.
 type usageMeResponse struct {
-	Plan   usagePlanField   `json:"plan"`
-	Used   usageUsedField   `json:"used"`
-	Limits usageLimitsField `json:"limits"`
+	Plan    usagePlanField    `json:"plan"`
+	LLM     usageLLMField     `json:"llm"`
+	Sandbox usageSandboxField `json:"sandbox"`
+	Storage usageStorageField `json:"storage"`
 }
 
 type usagePlanField struct {
@@ -50,23 +52,24 @@ type usagePlanField struct {
 	Label string `json:"label"`
 }
 
-type usageUsedField struct {
-	// Last5d is the rolling-5-day turn count (the gate's primary
-	// window).  Always present even when Plan.TurnsPer5d == -1
-	// (Max+ / BYOK) so the UI can render a "lifetime burst" bar.
-	Last5d int64 `json:"last_5d"`
-	// ThisMonth is the calendar-month turn count.
-	ThisMonth int64 `json:"this_month"`
+// usageLLMField surfaces token cost — both windows side by side, in
+// RMB cents.  UI will typically show 5d as the primary bar and month
+// as a secondary line ("本月 ¥X / ¥Y").
+type usageLLMField struct {
+	UsedCentsLast5d    int64 `json:"used_cents_last_5d"`
+	UsedCentsThisMonth int64 `json:"used_cents_this_month"`
+	BudgetCentsPer5d   int   `json:"budget_cents_per_5d"`
+	BudgetCentsPerMonth int  `json:"budget_cents_per_month"`
 }
 
-type usageLimitsField struct {
-	// -1 sentinel propagates straight through to the client.  The
-	// host-shell decoder treats negative values as "unlimited" and
-	// renders them as "—" or hides the bar entirely.
-	TurnsPer5d        int `json:"turns_per_5d"`
-	TurnsPerMonth     int `json:"turns_per_month"`
-	ActiveBoxes       int `json:"active_boxes"`
-	PublishesPerMonth int `json:"publishes_per_month"`
+type usageSandboxField struct {
+	UsedThisMonth int64 `json:"used_this_month"`
+	PerMonth      int   `json:"per_month"`
+}
+
+type usageStorageField struct {
+	Active      int64 `json:"active"`
+	ActiveLimit int   `json:"active_limit"`
 }
 
 func usageMe(d UsageDeps) gin.HandlerFunc {
@@ -87,15 +90,19 @@ func usageMe(d UsageDeps) gin.HandlerFunc {
 				ID:    string(plan.ID),
 				Label: plan.Label,
 			},
-			Used: usageUsedField{
-				Last5d:    used.Last5d,
-				ThisMonth: used.ThisMonth,
+			LLM: usageLLMField{
+				UsedCentsLast5d:     used.LLMSpentCentsLast5d,
+				UsedCentsThisMonth:  used.LLMSpentCentsThisMonth,
+				BudgetCentsPer5d:    plan.LLMBudgetCentsPer5d,
+				BudgetCentsPerMonth: plan.LLMBudgetCentsPerMonth,
 			},
-			Limits: usageLimitsField{
-				TurnsPer5d:        plan.TurnsPer5d,
-				TurnsPerMonth:     plan.TurnsPerMonth,
-				ActiveBoxes:       plan.ActiveBoxes,
-				PublishesPerMonth: plan.PublishesPerMonth,
+			Sandbox: usageSandboxField{
+				UsedThisMonth: used.SandboxRunsThisMonth,
+				PerMonth:      plan.SandboxRunsPerMonth,
+			},
+			Storage: usageStorageField{
+				Active:      used.ActiveBoxes,
+				ActiveLimit: plan.ActiveBoxes,
 			},
 		})
 	}

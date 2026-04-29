@@ -1,11 +1,16 @@
-// Quota is the runtime gate that decides whether a user's next /ai/turn
-// call is allowed under their plan.  It runs two queries against
-// store.Turns — one for the rolling 5-day window, one for the calendar
-// month — and reports the count plus a Decision describing which
-// window (if any) is exhausted.
+// Quota is the runtime gate that decides whether a user's next
+// platform action is allowed under their plan.  Three independent
+// dimensions, each with its own cap; whichever fires first denies
+// without affecting the others (so an LLM-cap deny still lets the
+// user open the boxes tab and read past chats):
 //
-// The handler calls Check before invoking the engine; a deny returns
-// HTTP 429 with a Retry-After header derived from Decision.RetryAfter.
+//   - LLM     — sums ai_turns.cost_cents over a 5d rolling window
+//               and the calendar month
+//   - Sandbox — counts bundle build attempts for the calendar month
+//   - Storage — counts non-archived boxes (point-in-time, not a window)
+//
+// The handler calls Check before invoking the action; deny returns
+// 429 with Retry-After + a JSON body describing which dimension fired.
 package usage
 
 import (
@@ -14,27 +19,30 @@ import (
 	"time"
 )
 
-// Window enumerates the named rate-limit windows.  Returned by
-// Decision.LimitedBy so the caller can render an accurate 429 message
-// ("you hit your weekly cap" vs "you hit your monthly cap").
+// Window enumerates the rate-limit windows we report on.  Returned by
+// Decision.LimitedBy so the caller can render an accurate 429
+// message.
 type Window string
 
 const (
-	WindowNone    Window = ""        // not limited
-	Window5d      Window = "5d"      // rolling 5 days
-	WindowMonthly Window = "monthly" // current calendar month
+	WindowNone        Window = ""             // not limited
+	WindowLLM5d       Window = "llm_5d"       // LLM rolling 5 days
+	WindowLLMMonthly  Window = "llm_monthly"  // LLM calendar month
+	WindowSandbox     Window = "sandbox"      // Sandbox calendar month
+	WindowStorage     Window = "storage"      // Storage point-in-time
 )
 
-// Used reports current consumption across both windows.  Token / publish
-// counts are not populated here — those are independent quotas tracked
-// elsewhere.
+// Used reports current consumption across all three dimensions.
 type Used struct {
-	Last5d    int64
-	ThisMonth int64
-	// CountedAt is the wall-clock the queries ran at; quota math uses
-	// the same instant for the two SQL counts so a turn that lands
-	// between them can't be double-counted.  Surfaced to callers so a
-	// "remaining" UI doesn't have to call time.Now() itself.
+	// LLM (RMB cents).
+	LLMSpentCentsLast5d    int64
+	LLMSpentCentsThisMonth int64
+	// Sandbox runs this calendar month.
+	SandboxRunsThisMonth int64
+	// Storage: count of non-archived boxes (point-in-time).
+	ActiveBoxes int64
+	// CountedAt is the wall-clock the queries ran at.  Surfaced to
+	// callers so a "remaining" UI doesn't have to call time.Now().
 	CountedAt time.Time
 }
 
@@ -44,33 +52,46 @@ type Used struct {
 type Decision struct {
 	Allowed    bool
 	LimitedBy  Window
-	RetryAfter time.Duration // how long until the limiting window resets
+	RetryAfter time.Duration
 	Used       Used
 	Plan       Plan
 }
 
-// turnCounter is the slice of store.Turns we depend on.  Defined as an
-// interface so quota_test.go can plug in a stub without spinning up
-// SQLite for every assertion.
-type turnCounter interface {
-	CountByNamespace(ctx context.Context, namespace string, sinceMillis int64) (int64, error)
+// LLMSource owns the slice of store calls covering AI-turn cost.
+type LLMSource interface {
+	LLMSpentByNamespace(ctx context.Context, namespace string, sinceMillis int64) (int64, error)
 }
 
-// Quota is the service object the handler holds.  Stateless apart from
-// the store reference; safe to share across goroutines.
+// SandboxSource covers per-month sandbox build counts.
+type SandboxSource interface {
+	SandboxRunsByNamespace(ctx context.Context, namespace string, sinceMillis int64) (int64, error)
+}
+
+// StorageSource covers point-in-time active-box counts.
+type StorageSource interface {
+	ActiveByNamespace(ctx context.Context, namespace string) (int64, error)
+}
+
+// Quota is the service object the handler holds.  Stateless apart
+// from the source references; safe to share across goroutines.
+//
+// The three sources are split because LLM lives in store.Turns while
+// Sandbox + Storage live in store.Boxes; tests can also stub each
+// independently.
 type Quota struct {
-	turns turnCounter
-	now   func() time.Time // injectable for tests
+	llm     LLMSource
+	sandbox SandboxSource
+	storage StorageSource
+	now     func() time.Time // injectable for tests
 }
 
-// NewQuota constructs the gate.  Pass store.Turns (or any turnCounter)
-// — the indirection is only for tests.
-func NewQuota(turns turnCounter) *Quota {
-	return &Quota{turns: turns, now: time.Now}
+// NewQuota constructs the gate.
+func NewQuota(llm LLMSource, sandbox SandboxSource, storage StorageSource) *Quota {
+	return &Quota{llm: llm, sandbox: sandbox, storage: storage, now: time.Now}
 }
 
-// Used reports current consumption without making a deny/allow decision.
-// Used by the Profile / Boxes UI to render "本周 N/M · 本月 N/M".
+// Used reports current consumption without making a deny/allow
+// decision.  Used by /usage/me to render Profile-page progress bars.
 func (q *Quota) Used(ctx context.Context, namespace string) (Used, error) {
 	if namespace == "" {
 		return Used{}, errors.New("usage: namespace required")
@@ -79,64 +100,101 @@ func (q *Quota) Used(ctx context.Context, namespace string) (Used, error) {
 	since5d := now.Add(-5 * 24 * time.Hour).UnixMilli()
 	monthStart := startOfMonth(now).UnixMilli()
 
-	last5d, err := q.turns.CountByNamespace(ctx, namespace, since5d)
+	last5d, err := q.llm.LLMSpentByNamespace(ctx, namespace, since5d)
 	if err != nil {
 		return Used{}, err
 	}
-	thisMonth, err := q.turns.CountByNamespace(ctx, namespace, monthStart)
+	thisMonth, err := q.llm.LLMSpentByNamespace(ctx, namespace, monthStart)
+	if err != nil {
+		return Used{}, err
+	}
+	sandbox, err := q.sandbox.SandboxRunsByNamespace(ctx, namespace, monthStart)
+	if err != nil {
+		return Used{}, err
+	}
+	active, err := q.storage.ActiveByNamespace(ctx, namespace)
 	if err != nil {
 		return Used{}, err
 	}
 	return Used{
-		Last5d:    last5d,
-		ThisMonth: thisMonth,
-		CountedAt: now,
+		LLMSpentCentsLast5d:    last5d,
+		LLMSpentCentsThisMonth: thisMonth,
+		SandboxRunsThisMonth:   sandbox,
+		ActiveBoxes:            active,
+		CountedAt:              now,
 	}, nil
 }
 
-// Check runs Used and applies the plan's caps.  The first window to
-// trip determines LimitedBy + RetryAfter.  Both windows being open
-// returns Allowed=true.  -1 caps mean "unlimited" and are never tripped.
+// CheckLLM is the gate for /ai/turn — only verifies LLM caps.  Hits
+// the LLM dimensions only so a Sandbox cap doesn't block chat (and
+// vice versa).  -1 caps mean unlimited and are never tripped.
 //
-// Order matters when both could fire: 5d wins (it's the more granular
-// signal and the more imminent reset).
-func (q *Quota) Check(ctx context.Context, namespace string, plan Plan) (Decision, error) {
+// Order: 5d wins when both LLM windows could fire (more imminent reset).
+func (q *Quota) CheckLLM(ctx context.Context, namespace string, plan Plan) (Decision, error) {
 	used, err := q.Used(ctx, namespace)
 	if err != nil {
 		return Decision{}, err
 	}
 	dec := Decision{Allowed: true, Used: used, Plan: plan}
 
-	if plan.TurnsPer5d >= 0 && used.Last5d >= int64(plan.TurnsPer5d) {
+	if plan.LLMBudgetCentsPer5d >= 0 && used.LLMSpentCentsLast5d >= int64(plan.LLMBudgetCentsPer5d) {
 		dec.Allowed = false
-		dec.LimitedBy = Window5d
-		// Reset = oldest turn-in-window's time + 5d.  We don't have
-		// that timestamp here without an extra query; fall back to a
-		// conservative "5d from now" hint.  The handler can refine
-		// this later via a separate "earliest turn in window" query
-		// if we decide the imprecise hint is bad UX.
+		dec.LimitedBy = WindowLLM5d
 		dec.RetryAfter = 5 * 24 * time.Hour
 		return dec, nil
 	}
-	if plan.TurnsPerMonth >= 0 && used.ThisMonth >= int64(plan.TurnsPerMonth) {
+	if plan.LLMBudgetCentsPerMonth >= 0 && used.LLMSpentCentsThisMonth >= int64(plan.LLMBudgetCentsPerMonth) {
 		dec.Allowed = false
-		dec.LimitedBy = WindowMonthly
+		dec.LimitedBy = WindowLLMMonthly
 		dec.RetryAfter = nextMonth(used.CountedAt).Sub(used.CountedAt)
 		return dec, nil
 	}
 	return dec, nil
 }
 
-// startOfMonth returns midnight on the 1st of t's month, in t's
-// location.  We use UTC throughout the relay so the result is
-// deterministic across deployments.
+// CheckSandbox gates publish_box / box.BuildAndPublish.  Per-month
+// only — sandbox cost is predictable per call so a rolling window
+// doesn't add value.
+func (q *Quota) CheckSandbox(ctx context.Context, namespace string, plan Plan) (Decision, error) {
+	used, err := q.Used(ctx, namespace)
+	if err != nil {
+		return Decision{}, err
+	}
+	dec := Decision{Allowed: true, Used: used, Plan: plan}
+	if plan.SandboxRunsPerMonth >= 0 && used.SandboxRunsThisMonth >= int64(plan.SandboxRunsPerMonth) {
+		dec.Allowed = false
+		dec.LimitedBy = WindowSandbox
+		dec.RetryAfter = nextMonth(used.CountedAt).Sub(used.CountedAt)
+	}
+	return dec, nil
+}
+
+// CheckStorage gates box creation.  Point-in-time check — RetryAfter
+// is meaningless here (the user has to delete or archive a box, not
+// wait), so we leave it 0 and rely on UI copy.
+func (q *Quota) CheckStorage(ctx context.Context, namespace string, plan Plan) (Decision, error) {
+	used, err := q.Used(ctx, namespace)
+	if err != nil {
+		return Decision{}, err
+	}
+	dec := Decision{Allowed: true, Used: used, Plan: plan}
+	if plan.ActiveBoxes >= 0 && used.ActiveBoxes >= int64(plan.ActiveBoxes) {
+		dec.Allowed = false
+		dec.LimitedBy = WindowStorage
+		// RetryAfter zero — user action required, no auto-reset.
+	}
+	return dec, nil
+}
+
+// startOfMonth returns midnight on the 1st of t's month, in UTC.
+// We use UTC throughout the relay so the result is deterministic
+// across deployments.
 func startOfMonth(t time.Time) time.Time {
 	t = t.UTC()
 	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
 }
 
 // nextMonth returns midnight on the 1st of t's NEXT calendar month.
-// Used to compute Retry-After when the monthly cap fires.
 func nextMonth(t time.Time) time.Time {
 	t = t.UTC()
 	return time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, time.UTC)

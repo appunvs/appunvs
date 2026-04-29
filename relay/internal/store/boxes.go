@@ -135,6 +135,38 @@ UPDATE app_boxes SET state = ?, updated_at = ? WHERE namespace = ? AND id = ?`,
 	return nil
 }
 
+// SandboxRunsByNamespace returns the number of bundle build attempts
+// in [sinceMillis, now] for a namespace.  Drives the Sandbox-quota
+// gate (internal/usage.Quota) — every BuildAndPublish call writes one
+// app_bundles row regardless of build_state, so a row count is the
+// honest measure of sandbox compute consumed.
+func (b *Boxes) SandboxRunsByNamespace(ctx context.Context, namespace string, sinceMillis int64) (int64, error) {
+	row := b.db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM app_bundles
+JOIN app_boxes ON app_bundles.box_id = app_boxes.id
+WHERE app_boxes.namespace = ? AND app_bundles.built_at >= ?`, namespace, sinceMillis)
+	var n int64
+	if err := row.Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// ActiveByNamespace returns the count of non-archived boxes a namespace
+// owns.  Drives the Storage-quota gate — Plan.ActiveBoxes is the cap.
+// Archived boxes don't count: their bundles eventually expire and
+// they don't accrue ongoing storage cost the way active ones do.
+func (b *Boxes) ActiveByNamespace(ctx context.Context, namespace string) (int64, error) {
+	row := b.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM app_boxes WHERE namespace = ? AND state != 'archived'`, namespace)
+	var n int64
+	if err := row.Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 // SetCurrentVersion points the box at a successful build.  Caller is
 // responsible for having already inserted the Bundle row with
 // build_state=succeeded.

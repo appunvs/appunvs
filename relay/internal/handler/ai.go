@@ -90,12 +90,12 @@ func aiTurn(d AIDeps) gin.HandlerFunc {
 			return
 		}
 
-		// Quota gate.  Runs against the user's plan; on deny we return a
-		// 429 with Retry-After seconds derived from the limiting window.
+		// LLM-quota gate.  /ai/turn only consults the LLM dimension;
+		// Sandbox / Storage gates live in their respective handlers.
 		// Skipped entirely when Quota is nil (dogfood / dev / tests).
 		if d.Quota != nil && d.PlanFor != nil {
 			plan := d.PlanFor(claims.UserID)
-			dec, err := d.Quota.Check(c.Request.Context(), claims.UserID, plan)
+			dec, err := d.Quota.CheckLLM(c.Request.Context(), claims.UserID, plan)
 			if err != nil {
 				d.Log.Error("ai.turn: quota check", zap.Error(err))
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
@@ -112,8 +112,14 @@ func aiTurn(d AIDeps) gin.HandlerFunc {
 					"limited_by":  string(dec.LimitedBy),
 					"plan":        string(plan.ID),
 					"retry_after": retry,
-					"used":        gin.H{"last_5d": dec.Used.Last5d, "this_month": dec.Used.ThisMonth},
-					"limits":      gin.H{"per_5d": plan.TurnsPer5d, "per_month": plan.TurnsPerMonth},
+					"used": gin.H{
+						"llm_cents_last_5d":    dec.Used.LLMSpentCentsLast5d,
+						"llm_cents_this_month": dec.Used.LLMSpentCentsThisMonth,
+					},
+					"limits": gin.H{
+						"llm_cents_per_5d":    plan.LLMBudgetCentsPer5d,
+						"llm_cents_per_month": plan.LLMBudgetCentsPerMonth,
+					},
 				})
 				return
 			}
