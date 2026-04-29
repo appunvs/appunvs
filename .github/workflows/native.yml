@@ -88,6 +88,28 @@ jobs:
         working-directory: appunvs/ios
         run: xcodegen generate 2>&1 | tee /tmp/xcodegen.log
 
+      - name: Resolve iOS Simulator destination
+        # macos-15 runners flake on hard-coded `iPhone 16` — sometimes
+        # the device type isn't pre-installed.  Pick whatever iPhone
+        # simulator is actually available; prefer iPhone 16 if present
+        # so behaviour stays stable on a healthy runner.
+        id: simulator
+        run: |
+          set -e
+          DEVICE_NAME=$(xcrun simctl list devices available -j \
+            | jq -r '
+              [.devices | to_entries[] | .value[] | select(.name | startswith("iPhone"))]
+              | (map(select(.name == "iPhone 16")) + .)
+              | .[0].name // empty
+            ')
+          if [ -z "$DEVICE_NAME" ]; then
+            echo "::error::No iPhone simulator available on this runner"
+            xcrun simctl list devices
+            exit 1
+          fi
+          echo "Resolved: $DEVICE_NAME"
+          echo "name=$DEVICE_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Build (Debug, simulator)
         working-directory: appunvs/ios
         run: |
@@ -96,7 +118,7 @@ jobs:
             -project Runtime.xcodeproj \
             -scheme Runtime \
             -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination "platform=iOS Simulator,name=${{ steps.simulator.outputs.name }}" \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -319,6 +341,28 @@ jobs:
           (cd runtime/ios && xcodegen generate --spec SDK.yml --project .) 2>&1 | tee /tmp/xcodegen.log
           (cd runtime/ios && pod install --repo-update) 2>&1 | tee /tmp/podinstall.log
 
+      - name: Resolve iOS Simulator destination
+        # See appunvs/ios job for rationale.  xcodebuild test is
+        # stricter than xcodebuild build — if the named device isn't
+        # installed, the run fails immediately instead of falling back
+        # to a placeholder destination.
+        id: simulator
+        run: |
+          set -e
+          DEVICE_NAME=$(xcrun simctl list devices available -j \
+            | jq -r '
+              [.devices | to_entries[] | .value[] | select(.name | startswith("iPhone"))]
+              | (map(select(.name == "iPhone 16")) + .)
+              | .[0].name // empty
+            ')
+          if [ -z "$DEVICE_NAME" ]; then
+            echo "::error::No iPhone simulator available on this runner"
+            xcrun simctl list devices
+            exit 1
+          fi
+          echo "Resolved: $DEVICE_NAME"
+          echo "name=$DEVICE_NAME" >> "$GITHUB_OUTPUT"
+
       # Run the XCUITest.  Scheme name matches the test target XcodeGen
       # generated from SDK.yml.  -workspace because cocoapods produced
       # RuntimeSdk.xcworkspace wrapping both xcodeprojs.
@@ -329,7 +373,7 @@ jobs:
             -workspace runtime/ios/RuntimeSdk.xcworkspace \
             -scheme RuntimeFixtureUITests \
             -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination "platform=iOS Simulator,name=${{ steps.simulator.outputs.name }}" \
             -derivedDataPath runtime/ios/build-uitest \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
