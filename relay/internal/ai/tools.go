@@ -176,6 +176,18 @@ func RunTool(ctx context.Context, d ToolDeps, name string, rawArgs string) (stri
 			EntryPoint: in.EntryPoint,
 		})
 		if err != nil {
+			// Plan-quota deny gets a structured payload so the agent
+			// recognizes it as policy (don't retry; suggest upgrade)
+			// rather than a transient build error.
+			if pe, ok := box.AsPlanExhausted(err); ok {
+				payload, _ := json.Marshal(map[string]any{
+					"error":      "plan_exhausted",
+					"limited_by": pe.Window,
+					"plan":       pe.Plan,
+					"hint":       "User has hit their plan cap; surface this and suggest upgrading rather than retrying.",
+				})
+				return string(payload), true
+			}
 			return err.Error(), true
 		}
 		out := map[string]any{

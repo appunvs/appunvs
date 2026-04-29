@@ -312,6 +312,11 @@ func main() {
 	if cfg.Pricing.Enabled {
 		aiDeps.Quota = quota
 		aiDeps.PlanFor = planFor
+		// Sandbox / Storage gates fire inside the box service so HTTP
+		// handlers AND the AI agent's publish_box tool are both
+		// protected by the same diff (see internal/box/quota.go).
+		boxSvc.Quota = quota
+		boxSvc.PlanFor = planFor
 		logger.Info("pricing gate enabled",
 			zap.String("default_plan", string(defaultPlan.ID)),
 			zap.Int("llm_cents_per_5d", defaultPlan.LLMBudgetCentsPer5d),
