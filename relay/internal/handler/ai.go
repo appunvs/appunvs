@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/appunvs/appunvs/relay/internal/auth"
 	"github.com/appunvs/appunvs/relay/internal/box"
 	"github.com/appunvs/appunvs/relay/internal/store"
+	"github.com/appunvs/appunvs/relay/internal/usage"
 )
 
 // AIDeps groups everything /ai/turn depends on.
@@ -23,6 +25,14 @@ type AIDeps struct {
 	Engine ai.Engine
 	Box    *box.Service
 	Log    *zap.Logger
+	// Quota gates per-user calls against the subscription tier's
+	// 5d / monthly turn caps.  Nil disables the gate (dev / dogfood
+	// / tests skip pricing).  Required when PlanFor is set.
+	Quota *usage.Quota
+	// PlanFor returns the plan a caller is entitled to.  v0 closures
+	// return a single config-driven default; Phase D will swap this
+	// for a users.plan column lookup.  Required when Quota is set.
+	PlanFor func(userID string) usage.Plan
 }
 
 // RegisterAIRoutes wires POST /ai/turn.  The route requires a device
@@ -78,6 +88,35 @@ func aiTurn(d AIDeps) gin.HandlerFunc {
 			d.Log.Error("ai.turn: box lookup", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
 			return
+		}
+
+		// Quota gate.  Runs against the user's plan; on deny we return a
+		// 429 with Retry-After seconds derived from the limiting window.
+		// Skipped entirely when Quota is nil (dogfood / dev / tests).
+		if d.Quota != nil && d.PlanFor != nil {
+			plan := d.PlanFor(claims.UserID)
+			dec, err := d.Quota.Check(c.Request.Context(), claims.UserID, plan)
+			if err != nil {
+				d.Log.Error("ai.turn: quota check", zap.Error(err))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+				return
+			}
+			if !dec.Allowed {
+				retry := int(math.Ceil(dec.RetryAfter.Seconds()))
+				if retry < 1 {
+					retry = 1
+				}
+				c.Writer.Header().Set("Retry-After", fmt.Sprintf("%d", retry))
+				c.JSON(http.StatusTooManyRequests, gin.H{
+					"error":       "plan_exhausted",
+					"limited_by":  string(dec.LimitedBy),
+					"plan":        string(plan.ID),
+					"retry_after": retry,
+					"used":        gin.H{"last_5d": dec.Used.Last5d, "this_month": dec.Used.ThisMonth},
+					"limits":      gin.H{"per_5d": plan.TurnsPer5d, "per_month": plan.TurnsPerMonth},
+				})
+				return
+			}
 		}
 
 		// Switch the response into SSE mode BEFORE starting the engine;

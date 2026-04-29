@@ -29,6 +29,7 @@ import (
 	"github.com/appunvs/appunvs/relay/internal/sequencer"
 	"github.com/appunvs/appunvs/relay/internal/store"
 	"github.com/appunvs/appunvs/relay/internal/stream"
+	"github.com/appunvs/appunvs/relay/internal/usage"
 	"github.com/appunvs/appunvs/relay/internal/workspace"
 )
 
@@ -291,12 +292,28 @@ func main() {
 		}
 		logger.Info("ai engine wired", fields...)
 	}
-	handler.RegisterAIRoutes(r, handler.AIDeps{
+	aiDeps := handler.AIDeps{
 		Signer: signer,
 		Engine: aiEngine,
 		Box:    boxSvc,
 		Log:    logger,
-	})
+	}
+	// Pricing gate: only attach the quota service when explicitly
+	// enabled.  v0 ships off-by-default so dogfood / CI / dev paths
+	// don't bounce off the Free tier's 50/month cap.  Phase D will
+	// replace the static plan closure with a per-user lookup driven
+	// by Stripe webhook → users.plan.
+	if cfg.Pricing.Enabled {
+		quota := usage.NewQuota(st.Turns())
+		defaultPlan := usage.PlanFor(usage.PlanID(cfg.Pricing.DefaultPlan))
+		aiDeps.Quota = quota
+		aiDeps.PlanFor = func(_ string) usage.Plan { return defaultPlan }
+		logger.Info("pricing gate enabled",
+			zap.String("default_plan", string(defaultPlan.ID)),
+			zap.Int("turns_per_5d", defaultPlan.TurnsPer5d),
+			zap.Int("turns_per_month", defaultPlan.TurnsPerMonth))
+	}
+	handler.RegisterAIRoutes(r, aiDeps)
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
