@@ -113,6 +113,28 @@ WHERE app_boxes.namespace = ? AND ai_turns.created_at >= ?`, namespace, sinceMil
 	return n.Int64, nil
 }
 
+// CountByNamespace returns the number of turn rows in [sinceMillis, now] for
+// a namespace.  Used by the per-window quota gate (5d rolling, calendar
+// month) in /ai/turn — see internal/usage.Quota.
+//
+// Boxes are namespace-scoped and ai_turns is box-scoped, so we join.
+// Existing indexes — idx_app_boxes_ns(namespace, ...) and
+// idx_ai_turns_box(box_id, created_at DESC) — cover both sides; no new
+// index needed at v0 scale (~hundreds of users).  If perf shows up post-
+// dogfood we'll denormalize namespace onto ai_turns.
+func (t *Turns) CountByNamespace(ctx context.Context, namespace string, sinceMillis int64) (int64, error) {
+	row := t.db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM ai_turns
+JOIN app_boxes ON ai_turns.box_id = app_boxes.id
+WHERE app_boxes.namespace = ? AND ai_turns.created_at >= ?`, namespace, sinceMillis)
+	var n int64
+	if err := row.Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 // init registers Block 6: ai_turns.
 func init() {
 	migrations = append(migrations, migration{
