@@ -118,6 +118,39 @@ jobs:
           } > /tmp/comment.md
           gh pr comment ${{ github.event.pull_request.number }} -F /tmp/comment.md
 
+  # Single aggregated success comment per workflow, dedup'd via HTML
+  # marker — gives Claude Code on the web (which only forwards CI
+  # *failures* / review comments via webhook) a way to learn that the
+  # full check suite went green.  On re-push we update the existing
+  # comment in place rather than spamming the PR.
+  notify_success:
+    name: notify success
+    runs-on: ubuntu-latest
+    needs: [relay, sandbox_docker]
+    if: ${{ github.event_name == 'pull_request' && needs.relay.result == 'success' && needs.sandbox_docker.result == 'success' }}
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Post or update success comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          WORKFLOW: ${{ github.workflow }}
+        run: |
+          marker="<!-- ci-success:${WORKFLOW} -->"
+          body=$(printf '%s\n\n✅ Workflow `%s` all checks passed @ `%s`\n' "$marker" "$WORKFLOW" "$SHA")
+          existing=$(gh api "repos/${REPO}/issues/${PR}/comments" \
+            --jq ".[] | select(.body | contains(\"${marker}\")) | .id" | head -1)
+          if [ -n "$existing" ]; then
+            gh api "repos/${REPO}/issues/comments/${existing}" -X PATCH -f body="$body"
+          else
+            # gh pr comment needs git-remote context (no checkout in this
+            # job); the issues-comments API works on the absolute path.
+            gh api "repos/${REPO}/issues/${PR}/comments" -f body="$body"
+          fi
+
   # Native iOS + Android jobs live in `.github/workflows/native.yml` so
   # they only fire on `runtime/**` changes.  The Tauri job that lived
   # here is gone with the desktop pivot; v1 ships mobile-only.
