@@ -3,6 +3,8 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 	"net/http"
 	"strings"
 
@@ -61,12 +63,42 @@ func boxCreate(d BoxDeps) gin.HandlerFunc {
 		}
 		b, err := d.Service.Create(c.Request.Context(), claims.UserID, claims.DeviceID, req.Title, req.Runtime)
 		if err != nil {
+			if writePlanExhausted(c, err) {
+				return
+			}
 			d.Log.Error("box.create", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
 			return
 		}
 		c.JSON(http.StatusOK, box.ToPB(b, nil))
 	}
+}
+
+// writePlanExhausted checks for box.ErrPlanExhausted and writes a
+// 429 response with Retry-After + structured JSON when the gate
+// fired.  Returns true when the response was handled.  Used by both
+// Create (Storage gate) and Publish (Sandbox gate) handlers — each
+// only declares the error in its own deny path, but the mapping is
+// identical so the dispatch lives here.
+func writePlanExhausted(c *gin.Context, err error) bool {
+	pe, ok := box.AsPlanExhausted(err)
+	if !ok {
+		return false
+	}
+	retry := int(math.Ceil(pe.RetryAfter.Seconds()))
+	if retry < 0 {
+		retry = 0
+	}
+	if retry > 0 {
+		c.Writer.Header().Set("Retry-After", fmt.Sprintf("%d", retry))
+	}
+	c.JSON(http.StatusTooManyRequests, gin.H{
+		"error":       "plan_exhausted",
+		"limited_by":  pe.Window,
+		"plan":        pe.Plan,
+		"retry_after": retry,
+	})
+	return true
 }
 
 func boxGet(d BoxDeps) gin.HandlerFunc {
@@ -143,6 +175,9 @@ func boxPublish(d BoxDeps) gin.HandlerFunc {
 			Files:      files,
 		})
 		if err != nil {
+			if writePlanExhausted(c, err) {
+				return
+			}
 			if errors.Is(err, store.ErrBoxNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 				return

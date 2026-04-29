@@ -20,6 +20,7 @@ import (
 	"github.com/appunvs/appunvs/relay/internal/pb"
 	"github.com/appunvs/appunvs/relay/internal/sandbox"
 	"github.com/appunvs/appunvs/relay/internal/store"
+	"github.com/appunvs/appunvs/relay/internal/usage"
 	"github.com/appunvs/appunvs/relay/internal/workspace"
 )
 
@@ -39,6 +40,13 @@ type Service struct {
 	// notification surface leave it unset; production wires a
 	// NewEvents() in cmd/server/main.go.
 	Events *Events
+	// Quota gates Create (Storage cap) and BuildAndPublish (Sandbox
+	// cap).  Optional — nil disables the gate, used by dev / CI /
+	// dogfood paths.  Wiring lives in cmd/server/main.go controlled
+	// by cfg.Pricing.Enabled.  Both Quota and PlanFor must be set
+	// for the gate to fire (matching AIDeps' conditional shape).
+	Quota   *usage.Quota
+	PlanFor func(namespace string) usage.Plan
 }
 
 // New returns a Service wired with all four collaborators.  `ws` may be
@@ -51,7 +59,15 @@ func New(boxes *store.Boxes, builder sandbox.Builder, store artifact.Store, ws *
 
 // Create creates a new draft box owned by providerDeviceID inside namespace.
 // Returns the persisted Box (with an assigned id and timestamps).
+//
+// When the Storage quota gate is wired (cfg.Pricing.Enabled), this
+// returns ErrPlanExhausted{Window:"storage"} once the namespace's
+// active-box count is at the plan cap.  Caller should map to
+// HTTP 429 (or surface in the publish_box tool result).
 func (s *Service) Create(ctx context.Context, namespace, providerDeviceID, title string, runtime pb.RuntimeKind) (store.Box, error) {
+	if err := s.gateStorage(ctx, namespace); err != nil {
+		return store.Box{}, err
+	}
 	if runtime == pb.RuntimeKindUnspecified {
 		runtime = pb.RuntimeKindRNBundle
 	}
@@ -114,7 +130,17 @@ func (s *Service) List(ctx context.Context, namespace string) ([]store.Box, erro
 //
 // This is the canonical "publish" path called both by the HTTP handler
 // (POST /box/:id/publish) and by the AI agent's publish_box tool.
+//
+// When the Sandbox quota gate is wired (cfg.Pricing.Enabled), this
+// returns ErrPlanExhausted{Window:"sandbox"} once the namespace's
+// builds-this-month count is at the plan cap.  Gate runs BEFORE the
+// box lookup so a user at cap can't even probe for cross-namespace
+// box ids; ErrPlanExhausted is the same shape regardless of which
+// box was targeted.
 func (s *Service) BuildAndPublish(ctx context.Context, namespace string, src sandbox.Source) (store.Bundle, error) {
+	if err := s.gateSandbox(ctx, namespace); err != nil {
+		return store.Bundle{}, err
+	}
 	box, err := s.Boxes.Get(ctx, namespace, src.BoxID)
 	if err != nil {
 		return store.Bundle{}, err
