@@ -55,7 +55,9 @@ jobs:
           if [ -n "$existing" ]; then
             gh api "repos/${REPO}/issues/comments/${existing}" -X PATCH -f body="$body"
           else
-            gh pr comment "$PR" --body "$body"
+            # gh pr comment needs git-remote context (no checkout in this
+            # job); the issues-comments API works on the absolute path.
+            gh api "repos/${REPO}/issues/${PR}/comments" -f body="$body"
           fi
 
   # The clippy job that lived here is gone with the desktop pivot.
