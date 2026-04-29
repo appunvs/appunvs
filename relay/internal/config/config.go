@@ -22,6 +22,22 @@ type Config struct {
 	Workspace Workspace `mapstructure:"workspace"`
 	Sandbox   Sandbox   `mapstructure:"sandbox"`
 	AI        AI        `mapstructure:"ai"`
+	Pricing   Pricing   `mapstructure:"pricing"`
+}
+
+// Pricing controls the /ai/turn quota gate.  Disabled in dev / dogfood
+// (the default) so unauthenticated traffic doesn't immediately bounce
+// off the Free tier's 50/month cap.  Phase D will replace DefaultPlan
+// with a per-user lookup driven by the Stripe entitlement webhook.
+type Pricing struct {
+	// Enabled flips the gate on.  When false, /ai/turn skips the
+	// quota check entirely — same behavior as before Phase B.
+	Enabled bool `mapstructure:"enabled"`
+	// DefaultPlan is the Plan id assigned to every authenticated
+	// caller.  v0 keeps a single value (no users.plan column yet);
+	// recognised ids are documented in internal/usage/plans.go.
+	// Unknown values fall back to "free" via usage.PlanFor.
+	DefaultPlan string `mapstructure:"default_plan"`
 }
 
 // Sandbox configures the build backend that turns AI-edited source
@@ -140,6 +156,11 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("ai.model", "")
 	v.SetDefault("ai.max_iters", 10)
 	v.SetDefault("ai.max_tokens", 8000)
+	// Pricing gate is OFF by default — dogfood / dev / CI all
+	// skip the quota check.  Production turns it on by setting
+	// pricing.enabled=true (or APPUNVS_PRICING_ENABLED=true).
+	v.SetDefault("pricing.enabled", false)
+	v.SetDefault("pricing.default_plan", "free")
 
 	if path == "" {
 		path = "config/config.yaml"
