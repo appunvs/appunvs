@@ -298,22 +298,29 @@ func main() {
 		Box:    boxSvc,
 		Log:    logger,
 	}
-	// Pricing gate: only attach the quota service when explicitly
-	// enabled.  v0 ships off-by-default so dogfood / CI / dev paths
-	// don't bounce off the Free tier's 50/month cap.  Phase D will
-	// replace the static plan closure with a per-user lookup driven
-	// by Stripe webhook → users.plan.
+	// Quota service is always constructed — GET /usage/me reads it
+	// regardless of whether the gate enforces.  The gate-enable flag
+	// only controls whether AIDeps.Quota is attached (i.e. /ai/turn
+	// blocks on cap) — informational reads stay live in dogfood mode
+	// so the host-shell can still render "本周 N/M" progress bars.
+	quota := usage.NewQuota(st.Turns())
+	defaultPlan := usage.PlanFor(usage.PlanID(cfg.Pricing.DefaultPlan))
+	planFor := func(_ string) usage.Plan { return defaultPlan }
 	if cfg.Pricing.Enabled {
-		quota := usage.NewQuota(st.Turns())
-		defaultPlan := usage.PlanFor(usage.PlanID(cfg.Pricing.DefaultPlan))
 		aiDeps.Quota = quota
-		aiDeps.PlanFor = func(_ string) usage.Plan { return defaultPlan }
+		aiDeps.PlanFor = planFor
 		logger.Info("pricing gate enabled",
 			zap.String("default_plan", string(defaultPlan.ID)),
 			zap.Int("turns_per_5d", defaultPlan.TurnsPer5d),
 			zap.Int("turns_per_month", defaultPlan.TurnsPerMonth))
 	}
 	handler.RegisterAIRoutes(r, aiDeps)
+	handler.RegisterUsageRoutes(r, handler.UsageDeps{
+		Signer:  signer,
+		Quota:   quota,
+		PlanFor: planFor,
+		Log:     logger,
+	})
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
