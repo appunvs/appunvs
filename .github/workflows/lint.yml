@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 concurrency:
   group: lint-${{ github.ref }}
   cancel-in-progress: true
@@ -24,6 +28,35 @@ jobs:
           version: v2.5.0
           working-directory: relay
           args: --timeout 5m
+
+  # See ci.yml's notify_success for rationale (Claude Code on the web
+  # only forwards CI *failures* / review comments; this gives it a
+  # success signal too, dedup'd via HTML marker).
+  notify_success:
+    name: notify success
+    runs-on: ubuntu-latest
+    needs: [go]
+    if: ${{ github.event_name == 'pull_request' && needs.go.result == 'success' }}
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Post or update success comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          WORKFLOW: ${{ github.workflow }}
+        run: |
+          marker="<!-- ci-success:${WORKFLOW} -->"
+          body=$(printf '%s\n\n✅ Workflow `%s` all checks passed @ `%s`\n' "$marker" "$WORKFLOW" "$SHA")
+          existing=$(gh api "repos/${REPO}/issues/${PR}/comments" \
+            --jq ".[] | select(.body | contains(\"${marker}\")) | .id" | head -1)
+          if [ -n "$existing" ]; then
+            gh api "repos/${REPO}/issues/comments/${existing}" -X PATCH -f body="$body"
+          else
+            gh pr comment "$PR" --body "$body"
+          fi
 
   # The clippy job that lived here is gone with the desktop pivot.
   # iOS and Android linting (SwiftLint / detekt) will land alongside
